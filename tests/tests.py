@@ -11,11 +11,11 @@ from twitter.modules.timeline import fetch_timeline, crawl_timeline
 
 class FollowerReaderTest(unittest.TestCase):
     def test_simple(self):
-        file = StringIO("1\n2\n3\nasd\n\n")
+        file = StringIO("1\n2\n3\nasd\n6\n")
         reader = FollowerReader(file, "StringIO")
         followers = [follower for follower in reader.get_followers()]
-        assert followers == [(0, 1), (1, 2), (2, 3)]
-        assert reader.follower_count == 3
+        assert followers == [(1, 1), (2, 2), (3, 3), (5, 6)]
+        assert reader.follower_count == 4
 
 def mock_open_file(contents):
     tuple_mock = Mock()
@@ -48,7 +48,7 @@ class TimelineModuleTest(unittest.TestCase):
         fetcher.fetch_url = Mock()
         fetcher.fetch_url.return_value = [None, [], MSG_OK, 0]
 
-        response = crawl_timeline(22, 0)
+        response = crawl_timeline(22)
 
         assert str(response) == "COMPLETED user_id: 22 state: 0 sleep_time: 0 attributes: timeline.total_fetched=0, timeline.total_included=0"
         fetcher.fetch_url.assert_called_with('get', 'http://api.twitter.com/1/statuses/user_timeline.json?count=200&include_rts=1&include_entities=1&user_id=22&max_id=12345')
@@ -61,7 +61,7 @@ class TimelineModuleTest(unittest.TestCase):
         fetcher.fetch_url = Mock()
         fetcher.fetch_url.return_value = [None, [], MSG_UNK, 33]
 
-        response = crawl_timeline(22, 0)
+        response = crawl_timeline(22)
         assert str(response) == "ERROR user_id: 22 state: 0 sleep_time: 33 attributes: timeline.total_fetched=0, timeline.total_included=0"
         assert stats.abort == True
 
@@ -74,7 +74,8 @@ class AnalyzerModuleTest(unittest.TestCase):
         fetcher.fetch_url = Mock()
         fetcher.fetch_url.return_value = [None, [{1: 2}, {2: 3}, {3: 4}], MSG_OK, 0]
 
-        assert (0, [{1: 2}, {2: 3}, {3: 4}], 0) == analyze_followers(self.new_reader())
+        # Next cursor is 5 although the file is end. The MSG_OK must stop
+        assert (MSG_OK, [{1: 2}, {2: 3}, {3: 4}], 0, 5) == analyze_followers(self.new_reader())
 
     def test_analyze_followers_huge(self):
         returns = [
@@ -89,7 +90,7 @@ class AnalyzerModuleTest(unittest.TestCase):
 
         fetcher.fetch_url = Mock(side_effect=side_effect)
 
-        assert (0, range(333), 0) == analyze_followers(self.new_reader('\n'.join(map(str, range(333)))))
+        assert (0, range(333), 0, 333) == analyze_followers(self.new_reader('\n'.join(map(str, range(333)))))
 
     def test_analyze_followers_huge_processed(self):
         returns = [
@@ -109,7 +110,7 @@ class AnalyzerModuleTest(unittest.TestCase):
 
         fetcher.fetch_url = Mock(side_effect=side_effect)
 
-        assert (0, range(1, 333, 2), 0) == analyze_followers(
+        assert (0, range(1, 333, 2), 0, 333) == analyze_followers(
             self.new_reader('\n'.join(map(str, range(333)))),
             already_processed=lambda x: (x % 2 == 0)
         )

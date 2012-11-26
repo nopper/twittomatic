@@ -43,8 +43,10 @@ MONITOR_PORT = 9898
 MONITOR_URL = 'http://localhost:%d' % MONITOR_PORT
 
 # Just used for testing
-TWITTER_URL = "http://api.twitter.com/1.1/"
-TWITTER_URL = "http://localhost:5000/1.1/"
+
+TWITTER_TIMEOUT = 2
+TWITTER_URL = "http://api.twitter.com/1/" # This requires no authentication
+#TWITTER_URL = "http://localhost:5000/1.1/"
 
 if not os.path.exists(OUTPUT_DIRECTORY):
     print "Directory %s does not exist. Exiting." % OUTPUT_DIRECTORY

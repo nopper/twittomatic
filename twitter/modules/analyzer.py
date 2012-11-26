@@ -8,15 +8,16 @@ LOOKUP_URL = settings.TWITTER_URL + "users/lookup.json"
 
 class FollowerReader(object):
     """
-    Please note that in this file line numbers are considered to start from 0
-    although the warning expose to the user a warning with line+1 just to be
-    informative
+    Here lines start from 1
     """
-    def __init__(self, file, filename, start_line=0):
+    def __init__(self, file, filename, start_line=1):
+        assert start_line > 0
+
         self.file = file
         self.filename = filename
         self.start_line = start_line
         self.follower_count = 0
+        self.total_lines = 0
 
         lineno = 0
         set_position = None
@@ -27,6 +28,7 @@ class FollowerReader(object):
                 position = self.file.tell()
                 line = iterable.next()
                 lineno += 1
+                self.total_lines += 1
 
                 if lineno >= start_line and set_position is None:
                     set_position = position
@@ -49,19 +51,19 @@ class FollowerReader(object):
         self.current_line = 0
 
     def get_followers(self):
-        for lineoff, line in enumerate(self.iterable):
+        for lineno, line in enumerate(self.iterable):
+            self.current_line = lineno + self.start_line
+
             if not line or not line.strip():
                 continue
 
-            lineoff += self.start_line
-            self.current_line = lineoff
             follower_id = None
 
             try:
                 follower_id = int(line.strip())
             except:
                 log.msg("Error in file %s at line %d: %s is not convertible to a user_id" % \
-                    (self.filename, self.current_line + 1, line.strip()))
+                    (self.filename, self.current_line, line.strip()))
 
             if follower_id is not None:
                 yield (self.current_line, follower_id)
@@ -87,6 +89,7 @@ def analyze_followers(reader, already_processed=lambda x: False, progress_cb=lam
     batch = []
     lookup_infos = []
     iterable = reader.get_followers()
+    current_line = reader.current_line
 
     while True:
         consumed = False
@@ -107,43 +110,51 @@ def analyze_followers(reader, already_processed=lambda x: False, progress_cb=lam
             'user_id': users,
         }
 
-        try:
-            count += 1
-            r, collection, msg, sleep_time = fetcher.fetch_url('post', LOOKUP_URL, data=payload, log_request=False)
-        except fetcher.TooManyAttemptsException:
-            return (MSG_BAN, lookup_infos, 60)
-
-        print collection
-        print r.content
+        # Avoid empty request
+        if len(batch) == 0:
+            msg = MSG_OK
+            consumed = True
+        else:
+            try:
+                count += 1
+                r, collection, msg, sleep_time = fetcher.fetch_url('post', LOOKUP_URL, data=payload, log_request=False)
+            except fetcher.TooManyAttemptsException:
+                return (MSG_BAN, lookup_infos, 60, current_line)
 
         if msg == MSG_OK:
-            batch = []
             lookup_infos.extend(collection)
-            progress_cb(lookup_infos)
+            current_line = reader.current_line
+
+            if len(batch) > 0:
+                progress_cb(lookup_infos)
+
+            batch = []
             # Jump below
         else:
-            return (msg, lookup_infos, sleep_time)
+            return (msg, lookup_infos, sleep_time, current_line)
 
         if max_requests > 0 and count >= max_requests:
-            return (msg, lookup_infos, sleep_time)
+            return (msg, lookup_infos, sleep_time, current_line)
 
         if consumed:
-            return (msg, lookup_infos, sleep_time)
+            return (msg, lookup_infos, sleep_time, current_line)
 
 def analyze_followers_of(user_id, start_line=0,
                          already_processed=lambda x: False,
                          must_follow=lambda x: True):
+
+    log.msg("Analyzing followers of user_id %d" % user_id)
 
     with fileutils.open_file(user_id, 'fws', mode=fileutils.READ) as status:
         file, stats = status
         reader = FollowerReader(file, str(user_id) + '.fws', start_line)
 
         def log_progress(lookup_infos):
-            log.msg("Follower of user_id %d: analyzed %d of %d [%02d%%]" % \
-                    (user_id, len(lookup_infos), reader.follower_count,
-                     100 * (len(lookup_infos) / float(reader.follower_count))))
+            log.msg("user_id %d Follower file: analyzed %d of %d [%02d%%]" % \
+                    (user_id, reader.current_line, reader.total_lines,
+                     100 * (reader.current_line / float(reader.total_lines))))
 
-        msg, lookup_infos, sleep_time = analyze_followers(
+        msg, lookup_infos, sleep_time, current_line = analyze_followers(
             reader, already_processed=already_processed,
             progress_cb=log_progress
         )
@@ -159,7 +170,7 @@ def analyze_followers_of(user_id, start_line=0,
 
         response = TwitterResponse(TwitterResponse.msg_to_status(msg),
             user_id,
-            reader.current_line + 1, # We advance the state also if there's an error. Master has to catch this
+            current_line,
             sleep_time
         )
 
@@ -186,7 +197,7 @@ if __name__ == "__main__":
     if options.filename:
         with open(options.filename, 'r') as infile:
             reader = FollowerReader(infile)
-            msg, lookup_infos, sleep_time = analyze_followers(
+            msg, lookup_infos, sleep_time, _ = analyze_followers(
                 reader,
                 max_requests=options.number
             )

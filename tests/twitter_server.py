@@ -69,10 +69,9 @@ def get_timeline(user_id, max_id=-1, since_id=-1):
 
 def get_followers(user_id, cursor=0):
     response = []
-    print user_id in dataset_followers
 
     for count, line in enumerate(dataset_followers[user_id]):
-        if len(response) >= 10:
+        if len(response) >= 500:
             break
         if count >= cursor:
             response.append(line.strip())
@@ -88,12 +87,12 @@ def set_rate(response):
     global remaining
 
     response.headers['x-ratelimit-remaining'] = remaining
-    response.headers['x-ratelimit-reset'] = time.time() + 2
+    response.headers['x-ratelimit-reset'] = int(time.time() + 2)
     remaining -= 1
 
-    if remaining == 0:
+    if remaining == -1:
         response.data = json.dumps([])
-        remaining = 10
+        remaining = 8
 
     return response
 

@@ -104,7 +104,7 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
         elif type == TwitterJob.FOLLOWER_OP:
             fmt = 'F,%d,-1'
         elif type == TwitterJob.ANALYZER_OP:
-            fmt = 'A,%d,0'
+            fmt = 'A,%d,1'
         elif type == TwitterJob.UPDATE_OP:
             fmt = 'U,%d,0'
         else:

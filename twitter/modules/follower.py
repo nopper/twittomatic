@@ -35,15 +35,15 @@ def fetch_followers(user_id=None, screen_name=None, cursor=-1, max_requests=-1):
             url = FETCH_URL.format(cursor, user_id) + user_arg
 
             if cursor == 0 or len(data['ids']) == 0:
-                return (MSG_OK, followers, 0)
+                return (MSG_OK, followers, 0, cursor)
 
         elif msg == MSG_BAN:
-            return (MSG_BAN, followers, sleep_time)
+            return (MSG_BAN, followers, sleep_time, cursor)
         else:
-            return (msg, followers, 0)
+            return (msg, followers, 0, cursor)
 
         if max_requests > 0 and count >= max_requests:
-            return (msg, followers, sleep_time)
+            return (msg, followers, sleep_time, cursor)
 
 def crawl_followers(user_id, cursor=-1, must_include=lambda x: True):
     """
@@ -52,18 +52,21 @@ def crawl_followers(user_id, cursor=-1, must_include=lambda x: True):
 
     @return a TwitterResponse
     """
+
+    log.msg("Retrieving followers of user_id %d" % user_id)
+
     # TODO: in case of duplication errors is better to open it as rw and load
     # all the users in a set thus removing duplicates
     with fileutils.open_file(user_id, 'fws', mode=fileutils.APPEND) as status:
         file, stats = status
-        msg, followers, sleep_time = fetch_followers(user_id=user_id, cursor=cursor)
+        msg, followers, sleep_time, new_cursor = fetch_followers(user_id=user_id, cursor=cursor)
 
         for follower in followers:
             file.write("%s\n" % follower)
 
         response = TwitterResponse(TwitterResponse.msg_to_status(msg),
             user_id,
-            cursor,
+            new_cursor,
             sleep_time
         )
 
@@ -85,7 +88,7 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
 
     if options.screen_name or options.user_id:
-        msg, followers, sleep_time = fetch_followers(
+        msg, followers, sleep_time, _ = fetch_followers(
             screen_name=options.screen_name,
             user_id=options.user_id,
             max_requests=options.number

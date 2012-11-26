@@ -71,6 +71,9 @@ def crawl_timeline(user_id, must_include=lambda x: True):
 
     @return a TwitterResponse
     """
+
+    log.msg("Fetching timeline of user_id %d" % user_id)
+
     with fileutils.open_file(user_id, 'twt', mode=fileutils.READ | fileutils.APPEND) as status:
         file, stats = status
 

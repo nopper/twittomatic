@@ -4,6 +4,7 @@ import requests
 from random import choice, randint
 
 from twitter.const import *
+from twitter import settings
 from twisted.python import log
 
 AGENTS="""Mozilla/5.0 (Windows NT 6.1; rv:12.0) Gecko/20120403211507 Firefox/14.0.1
@@ -22,7 +23,7 @@ def randomize_ua():
     return headers
 
 def get_sleep_time(r):
-    if 'x-ratelimit-limit' in r.headers and \
+    if 'x-ratelimit-reset' in r.headers and \
        'x-ratelimit-remaining' in r.headers:
         remain = int(r.headers['x-ratelimit-remaining'])
 
@@ -75,7 +76,7 @@ def fetch_url(method, url, data=None, auth=None, log_request=True):
                 log.msg("Fetcher: URL: %s" % url)
 
             attempts += 1
-            r = method(url, data=data, auth=auth, headers=randomize_ua(), timeout=1)
+            r = method(url, data=data, auth=auth, headers=randomize_ua(), timeout=settings.TWITTER_TIMEOUT)
             msg, sleep_time = get_sleep_time(r)
 
             if msg == MSG_OK:
