@@ -1,6 +1,7 @@
 from twitter.const import *
 from twitter import settings
 from twitter.modules import TwitterResponse, fileutils, fetcher
+from twisted.python import log
 
 FETCH_URL = settings.TWITTER_URL + "followers/ids.json?cursor={:d}&stringify_ids=true"
 
