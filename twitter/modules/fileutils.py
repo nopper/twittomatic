@@ -49,12 +49,14 @@ def commit_file_compressed(srcfile, user_id, extension):
     with profiled("Uploading of output in %s"):
         # Atomic rename on POSIX
         log.msg("Renaming %s to %s" % (srcfile.name, dstfilename))
-        os.rename(srcfile.name, dstfilename)
         srcfile.close()
+
+        # Race condition here?
+        os.rename(srcfile.name, dstfilename)
 
 def commit_file(srcfile, user_id, extension):
     # We need to copy the file contents to the original location
-    compfile = NamedTemporaryFile(prefix='twitter-', delete=False)
+    compfile = NamedTemporaryFile(prefix='twitter-', dir=settings.TEMPORARY_DIR, delete=False)
 
     with profiled("Compressing output in %s"):
         with gzip.GzipFile(mode='wb', fileobj=compfile) as gzfile:
@@ -63,7 +65,7 @@ def commit_file(srcfile, user_id, extension):
             log.msg("Output file size is %d bytes (%d bytes compressed)" % (gzfile.tell(), compfile.tell()))
 
         srcfile.close() # Delete the old plain file
-        # comp_dstfile.close()
+        comp_dstfile.close()
 
     commit_file_compressed(compfile, user_id, extension)
 
@@ -109,7 +111,7 @@ def local_copy(user_id, extension, mode):
         dstfile.close()
         return
 
-    if mode & APPEND:
+    if mode & APPEND or mode & WRITE:
         commit_file(dstfile, user_id, extension)
     else:
         dstfile.close()

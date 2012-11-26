@@ -24,6 +24,7 @@ import job
 JOB_CLASS = job.TwitterJob
 
 LOG_DIRECTORY = os.path.join(os.path.expanduser('~'), 'twitter-logs')
+TEMPORARY_DIRECTORY = os.path.join(os.path.expanduser('~'), 'twitter-temp')
 OUTPUT_DIRECTORY = os.path.join(os.path.expanduser('~'), 'twitter-ds')
 LOOKUP_DATABASE = os.path.join(os.path.expanduser('~'), 'twitter-lookup')
 
@@ -51,6 +52,10 @@ if not os.path.exists(OUTPUT_DIRECTORY):
 
 if not os.path.exists(LOG_DIRECTORY):
     print "Directory %s does not exist. Exiting." % LOG_DIRECTORY
+    sys.exit(-1)
+
+if not os.path.exists(TEMPORARY_DIRECTORY):
+    print "Directory %s does not exist. Exiting." % TEMPORARY_DIRECTORY
     sys.exit(-1)
 
 # Settings used by redis
