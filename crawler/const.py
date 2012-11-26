@@ -1,0 +1,5 @@
+TYPE_JOB = 0
+TYPE_MSG = 1
+
+MSG_SLEEP = 0
+MSG_QUIT  = 1

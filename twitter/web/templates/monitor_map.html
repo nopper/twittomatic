@@ -1,0 +1,306 @@
+<!doctype html>
+<head>
+  <title>Twitter crawler: Geo Map</title>
+  <script src="static/jquery-1.8.3.js"></script>
+  <script src="static/jquery.graphite.js"></script>
+  <link href="static/css/bootstrap.min.css" rel="stylesheet" media="screen">
+  <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.4/leaflet.css" />
+  <script src="http://cdn.leafletjs.com/leaflet-0.4/leaflet.js"></script>
+  <script src="http://d3js.org/d3.v2.js"></script>
+
+  <style>
+
+body {
+  font: 10px sans-serif;
+}
+
+.arc path {
+  stroke: #fff;
+}
+
+#map {
+    height: 600px;
+}
+
+
+svg {
+  font: 10px sans-serif;
+}
+
+path {
+  fill: steelblue;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.brush .extent {
+  stroke: #fff;
+  fill-opacity: .125;
+  shape-rendering: crispEdges;
+}
+
+</style>
+</head>
+<body>
+<div class="container">
+  {% block body %}
+
+    <div class="row">
+        <h3>Top 10 hashtags</h3>
+        <div id="pie"></div>
+    </div>
+
+    <div class="row">
+        <div id="timeline"></div>
+    </div>
+
+    <div class="row">
+        <h2>Geographical summary</h2>
+        <div id="map" class="img-polaroid"></div>
+    </div>
+</div>
+
+    <script>
+var map = L.map('map').fitBounds([
+    [46.875213396722685, 24.08203125],
+    [36.96744946416931, 3.076171875]
+]);
+
+L.tileLayer('http://{s}.tile.cloudmade.com/{key}/22677/256/{z}/{x}/{y}.png', {
+    attribution: 'Map data &copy; 2011 OpenStreetMap contributors, Imagery &copy; 2012 CloudMade',
+    key: 'BC9A493B41014CAABB98F0471D759707'
+}).addTo(map);
+
+map.on('click', function(e) {
+    load_tweets(e.latlng);
+});
+
+var load_hashtags = function() {
+    $.ajax({
+        url: 'http://localhost:9200/twitter/_search?pretty=true',
+        type: 'POST',
+        data: JSON.stringify({
+            "query" : { "match_all" : {} },
+            "facets" : {
+                "hashtags" : {
+                    "terms" : {
+                        "field" : "hashtags",
+                        "size"  : "10"
+                    }
+                }
+            }
+        }),
+        dataType : 'json',
+        processData: false,
+        success: function(json, statusText, xhr) {
+           return display_chart(json);
+        },
+        error: function(xhr, message, error) {
+            console.error("Error while loading data from ElasticSearch", message);
+            throw(error);
+        }
+    });
+
+    var display_chart = function(json) {
+        var data = json.facets.hashtags.terms;
+
+        var width = 400,
+            height = 400,
+            radius = Math.min(width, height) / 2;
+
+        var color = d3.scale.ordinal()
+            .range(["#98abc5", "#8a89a6", "#7b6888", "#6b486b", "#a05d56", "#d0743c", "#ff8c00"]);
+
+        var arc = d3.svg.arc()
+            .outerRadius(radius - 10)
+            .innerRadius(radius - 70);
+
+        var pie = d3.layout.pie()
+            .sort(null)
+            .value(function(d) { return d.count; });
+
+        var svg = d3.select("#pie").append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .append("g")
+            .attr("transform", "translate(" + width / 2 + "," + height / 2 + ")");
+
+        var g = svg.selectAll(".arc")
+            .data(pie(data))
+            .enter().append("g")
+            .attr("class", "arc");
+
+        g.append("path")
+            .attr("d", arc)
+            .style("fill", function(d) { return color(d.data.count); });
+
+        g.append("text")
+            .attr("transform", function(d) { return "translate(" + arc.centroid(d) + ")"; })
+            .attr("dy", ".35em")
+            .style("text-anchor", "middle")
+            .text(function(d) { return d.data.term; });
+    };
+};
+
+var load_timeline = function() {
+    $.ajax({
+        url: 'http://localhost:9200/twitter/_search?pretty=true',
+        type: 'POST',
+        data: JSON.stringify({
+            "query" : { "match_all" : {} },
+            "facets" : {
+                "created_at" : {
+                    "date_histogram" : {
+                        "field" : "created_at",
+                        "interval"  : "day"
+                    }
+                }
+            }
+        }),
+        dataType : 'json',
+        processData: false,
+        success: function(json, statusText, xhr) {
+           return display_timeline(json.facets.created_at.entries);
+        },
+        error: function(xhr, message, error) {
+            console.error("Error while loading data from ElasticSearch", message);
+            throw(error);
+        }
+    });
+
+    var display_timeline = function(data) {
+        var margin = {top: 10, right: 10, bottom: 100, left: 40},
+            margin2 = {top: 430, right: 10, bottom: 20, left: 40},
+            width = 960 - margin.left - margin.right,
+            height = 500 - margin.top - margin.bottom,
+            height2 = 500 - margin2.top - margin2.bottom;
+
+        var x = d3.time.scale().range([0, width]),
+            x2 = d3.time.scale().range([0, width]),
+            y = d3.scale.linear().range([height, 0]),
+            y2 = d3.scale.linear().range([height2, 0]);
+
+        var xAxis = d3.svg.axis().scale(x).orient("bottom"),
+            xAxis2 = d3.svg.axis().scale(x2).orient("bottom"),
+            yAxis = d3.svg.axis().scale(y).orient("left");
+
+        var brush = d3.svg.brush()
+            .x(x2)
+            .on("brush", brush);
+
+        var area = d3.svg.area()
+            .interpolate("monotone")
+            .x(function(d) { return x(d.date); })
+            .y0(height)
+            .y1(function(d) { return y(d.count); });
+
+        var area2 = d3.svg.area()
+            .interpolate("monotone")
+            .x(function(d) { return x2(d.date); })
+            .y0(height2)
+            .y1(function(d) { return y2(d.count); });
+
+        var svg = d3.select("#timeline").append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom);
+
+        svg.append("defs").append("clipPath")
+            .attr("id", "clip")
+            .append("rect")
+            .attr("width", width)
+            .attr("height", height);
+
+        var focus = svg.append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+        var context = svg.append("g")
+            .attr("transform", "translate(" + margin2.left + "," + margin2.top + ")");
+
+        data.forEach(function(d) {
+        d.date = new Date(d.time)
+        d.count = +d.count;
+        });
+
+        x.domain(d3.extent(data.map(function(d) { return d.date; })));
+        y.domain([0, d3.max(data.map(function(d) { return d.count; }))]);
+        x2.domain(x.domain());
+        y2.domain(y.domain());
+
+        focus.append("path")
+          .datum(data)
+          .attr("clip-path", "url(#clip)")
+          .attr("d", area);
+
+        focus.append("g")
+          .attr("class", "x axis")
+          .attr("transform", "translate(0," + height + ")")
+          .call(xAxis);
+
+        focus.append("g")
+          .attr("class", "y axis")
+          .call(yAxis);
+
+        context.append("path")
+          .datum(data)
+          .attr("d", area2);
+
+        context.append("g")
+          .attr("class", "x axis")
+          .attr("transform", "translate(0," + height2 + ")")
+          .call(xAxis2);
+
+        context.append("g")
+          .attr("class", "x brush")
+          .call(brush)
+          .selectAll("rect")
+          .attr("y", -6)
+          .attr("height", height2 + 7);
+
+        function brush() {
+            x.domain(brush.empty() ? x2.domain() : brush.extent());
+            focus.select("path").attr("d", area);
+            focus.select(".x.axis").call(xAxis);
+        }
+    }
+};
+
+load_hashtags();
+load_timeline();
+
+var load_tweets = function(position) {
+    console.log(position);
+    $.ajax({
+        url: 'http://localhost:9200/twitter/_search?pretty=true',
+        type: 'POST',
+        data: JSON.stringify({
+            "query" : { "match_all" : {} },
+            "filter" : {
+                "geo_distance" : {
+                    "distance" : "200km",
+                    "geo.location" : [position.lat, position.lng]
+                }
+            }
+        }),
+        dataType : 'json',
+        processData: false,
+        success: function(json, statusText, xhr) {
+            json.hits.hits.forEach(function(d) {
+                console.log(d._source.geo + " " + d._source.text);
+            })
+        },
+        error: function(xhr, message, error) {
+            console.error("Error while loading data from ElasticSearch", message);
+            throw(error);
+        }
+    });
+};
+
+    </script>
+  {% endblock %}
+</div>
+</body>
