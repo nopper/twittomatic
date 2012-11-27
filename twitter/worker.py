@@ -19,7 +19,7 @@ class TwitterTrackerClient(JobTrackerClient):
         log.msg("User %s lang: %s tweets: %d" % (user['screen_name'], user['lang'], user['statuses_count']))
 
         self.factory.redis.publish('extra.lookupinfos', json.dumps(user))
-        
+
         interesting = user['lang'] == 'it' and \
                       user['statuses_count'] > 100
 
@@ -49,8 +49,8 @@ class TwitterTrackerClient(JobTrackerClient):
 
         elif job.operation == TwitterJob.ANALYZER_OP:
             lambda_fun = lambda: exports.analyze_followers_of(user_id=job.user_id, start_line=job.cursor,
-                                                               already_processed=self.factory.alreadyProcessed,
-                                                               must_follow=self.mustFollow)
+                                                              already_processed=self.factory.alreadyProcessed,
+                                                              must_follow=self.mustFollow)
 
         elif job.operation == TwitterJob.UPDATE_OP:
             lambda_fun = lambda: exports.update_timeline(user_id=job.user_id)

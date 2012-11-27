@@ -140,7 +140,7 @@ def analyze_followers(reader, already_processed=lambda x: False, progress_cb=lam
         if consumed:
             return (msg, lookup_infos, sleep_time, current_line)
 
-def analyze_followers_of(user_id, start_line=0,
+def analyze_followers_of(user_id, start_line=1,
                          already_processed=lambda x: False,
                          must_follow=lambda x: True):
 
