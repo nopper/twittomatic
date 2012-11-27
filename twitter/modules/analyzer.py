@@ -1,4 +1,5 @@
 import json
+import errno
 from twitter import settings
 from twitter.const import *
 from twitter.modules import TwitterResponse, fileutils, fetcher
@@ -145,40 +146,48 @@ def analyze_followers_of(user_id, start_line=0,
 
     log.msg("Analyzing followers of user_id %d" % user_id)
 
-    with fileutils.open_file(user_id, 'fws', mode=fileutils.READ) as status:
-        file, stats = status
-        reader = FollowerReader(file, str(user_id) + '.fws', start_line)
+    try:
+        with fileutils.open_file(user_id, 'fws', mode=fileutils.READ) as status:
+            file, stats = status
+            reader = FollowerReader(file, str(user_id) + '.fws', start_line)
 
-        def log_progress(lookup_infos):
-            log.msg("user_id %d Follower file: analyzed %d of %d [%02d%%]" % \
-                    (user_id, reader.current_line, reader.total_lines,
-                     100 * (reader.current_line / float(reader.total_lines))))
+            def log_progress(lookup_infos):
+                log.msg("user_id %d Follower file: analyzed %d of %d [%02d%%]" % \
+                        (user_id, reader.current_line, reader.total_lines,
+                         100 * (reader.current_line / float(reader.total_lines))))
 
-        msg, lookup_infos, sleep_time, current_line = analyze_followers(
-            reader, already_processed=already_processed,
-            progress_cb=log_progress
-        )
+            msg, lookup_infos, sleep_time, current_line = analyze_followers(
+                reader, already_processed=already_processed,
+                progress_cb=log_progress
+            )
 
-        included = []
+            included = []
 
-        for info in lookup_infos:
-            if must_follow(info):
-                included.append(info['id_str'])
+            for info in lookup_infos:
+                if must_follow(info):
+                    included.append(info['id_str'])
 
-        total_included = len(included)
-        total_fetched = len(lookup_infos)
+            total_included = len(included)
+            total_fetched = len(lookup_infos)
 
-        response = TwitterResponse(TwitterResponse.msg_to_status(msg),
-            user_id,
-            current_line,
-            sleep_time
-        )
+            response = TwitterResponse(TwitterResponse.msg_to_status(msg),
+                user_id,
+                current_line,
+                sleep_time
+            )
 
-        response['analyzer.total_included'] = total_included
-        response['analyzer.total_fetched'] = total_fetched
-        response['analyzer.target_users'] = included
+            response['analyzer.total_included'] = total_included
+            response['analyzer.total_fetched'] = total_fetched
+            response['analyzer.target_users'] = included
 
-        return response
+            return response
+
+    except IOError, e:
+        if e.errno == errno.ENOENT:
+            log.msg("Follower file for user_id %d is not present. Bogus data?" % user_id)
+
+            # Let's treat this as not found user
+            return TwitterResponse(STATUS_UNAUTHORIZED, user_id, start_line, 0)
 
 
 if __name__ == "__main__":

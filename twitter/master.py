@@ -269,7 +269,7 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
         # results to our stream
 
         ot, of, oa, ou = 0, 0, 0, 0
-        
+
         if result.operation == TwitterJob.TIMELINE_OP:
             ot = self.redis.decr('stats.worker.ongoing.timeline')
             if status == STATUS_COMPLETED:
