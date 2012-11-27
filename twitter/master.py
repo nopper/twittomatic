@@ -205,7 +205,7 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
         elif result.operation == result.FOLLOWER_OP and \
              self.transformation & (TRANSFORM_ANALYZER):
 
-            return False, TwitterJob(TwitterJob.ANALYZER_OP, result.user_id, 0)
+            return False, TwitterJob(TwitterJob.ANALYZER_OP, result.user_id, 1)
 
         # TODO: please adjust this shit. Signal user process completion.
         # elif result.operation == result.ANALYZER_OP:
