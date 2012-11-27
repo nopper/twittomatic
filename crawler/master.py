@@ -3,7 +3,7 @@ import json
 
 from job import *
 from const import *
-from twisted.internet import reactor, task
+from twisted.internet import reactor, task, defer
 from twisted.internet.protocol import Protocol, ServerFactory
 from twisted.protocols.basic import LineReceiver
 from twisted.python import log
@@ -36,19 +36,28 @@ class JobTrackerProtocol(LineReceiver):
     def onRequest(self, msg):
         assert self.status == WORKER_IDLE
 
-        type, job = self.factory.assignJobTo(self.client_ip)
+        def callback(retval):
+            if retval is not None:
+                type, job = retval
 
-        if type == TYPE_JOB:
-            self.writeMessage({
-                'job': job
-            })
-            self.status = WORKER_WORKING
+                if type == TYPE_JOB:
+                    self.writeMessage({
+                        'job': job
+                    })
+                    self.status = WORKER_WORKING
 
-        elif type == TYPE_MSG:
-            self.writeMessage({
-                'message': job
-            })
-            self.status = WORKER_IDLE
+                elif type == TYPE_MSG:
+                    self.writeMessage({
+                        'message': job
+                    })
+                    self.status = WORKER_IDLE
+
+                return self.client_ip, type, job
+            return None
+
+        defer = self.factory.assignJobTo(self.client_ip)
+        defer.addCallback(callback)
+        defer.addCallback(self.factory.onJobAssigned)
 
     def onResult(self, msg):
         assert self.status == WORKER_WORKING
@@ -104,7 +113,7 @@ class JobTrackerProtocol(LineReceiver):
 
     def connectionLost(self, reason):
         if self.client_ip in self.factory.clients:
-            self.factory.manageLostClient(self.client_ip)
+            defer.waitForDeferred(self.factory.manageLostClient(self.client_ip))
 
 class JobTrackerFactory(ServerFactory):
     protocol = JobTrackerProtocol
@@ -121,11 +130,16 @@ class JobTrackerFactory(ServerFactory):
 
         self.client_to_nick = {}
         self.nick_to_client = {}
-
-        self.redis = redis
-        self.jobclass = jobclass
-
         self.assigned_jobs = {}
+
+        self.jobclass = jobclass
+        self.redis = None
+
+    @defer.inlineCallbacks
+    def bootstrap(self):
+        import txredisapi as redis
+        self.redis = yield redis.ConnectionPool()
+        print self.redis
 
         log.msg("New JobTracker server started")
         log.msg("Using %s as Job class" % self.jobclass.__name__)
@@ -133,13 +147,14 @@ class JobTrackerFactory(ServerFactory):
         self.periodic_summary = task.LoopingCall(self.summary)
         self.periodic_summary.start(5)
 
-        servers = self.redis.get('master.refcount')
+        servers = yield self.redis.get('master.refcount')
 
         if servers is not None or servers > 0:
             self.recoverFromCrash()
-            self.redis.set('master.refcount', 0)
+            yield self.redis.set('master.refcount', 0)
 
-        self.redis.incr('master.refcount')
+        num_instances = yield self.redis.incr('master.refcount')
+        defer.returnValue(num_instances)
 
     def getNickname(self, client):
         return self.client_to_nick[client]
@@ -154,24 +169,26 @@ class JobTrackerFactory(ServerFactory):
     def recoverFromCrash(self):
         log.msg("A crash condition was detected. You need to implement recoverFromCrash()")
 
+    @defer.inlineCallbacks
     def summary(self):
-        num_items = self.redis.llen('stream')
-        num_workers = len(self.clients)
-        active_workers = self.redis.scard('ongoing')
+        num_items = yield self.redis.llen('stream')
+        num_workers = yield len(self.clients)
+        active_workers = yield self.redis.scard('ongoing')
 
         if num_workers == 0:
             active_percentage = 'N/A'
         else:
             active_percentage = '%02d%%' % ((active_workers / (num_workers * 1.0)) * 100)
-    
+
         log.msg("STATS: Number of workers: %d" % num_workers)
         log.msg("STATS: Number of active workers: %d [percentage: %s]" % (active_workers, active_percentage))
         log.msg("STATS: Number of items %d" % num_items)
 
+    @defer.inlineCallbacks
     def finished(self):
         "@return True if we have successfully completed parsing the stream"
-        items_left = self.redis.llen('stream')
-        items_ongoing = self.redis.scard('ongoing')
+        items_left = yield self.redis.llen('stream')
+        items_ongoing = yield self.redis.scard('ongoing')
 
         log.msg("Items left: %d Items ongoing: %d" % (items_left, items_ongoing))
         #log.msg("Contents: %s" % str(self.redis._db))
@@ -182,53 +199,59 @@ class JobTrackerFactory(ServerFactory):
             log.msg("We have finished. Shutting down in 10 seconds")
             reactor.callLater(10, self.onFinished)
 
-        return finished
+        defer.returnValue(finished)
 
+    @defer.inlineCallbacks
     def assignJobTo(self, client):
         """
         @return a tuple of the form (TYPE_JOB, job) or (TYPE_MSG, msg)
         """
         assert self.clients[client] == WORKER_IDLE
 
-        job = self.redis.lindex('stream', 0)
+        job = yield self.redis.lindex('stream', 0)
 
         if job is None:
-            if self.finished():
-                self.clients[client] = WORKER_IDLE
-                return (TYPE_MSG, "quit/")
-            else:
-                # Increase sleep interval until a given threshold of 5 minutes or so is reached
-                self.clients[client] = WORKER_IDLE
-                return (TYPE_MSG, "sleep/%d" % 60)
+            def finalize(finished):
+                print finished
+                if finished:
+                    self.clients[client] = WORKER_IDLE
+                    defer.returnValue((TYPE_MSG, "quit/"))
+                else:
+                    # Increase sleep interval until a given threshold of 5 minutes or so is reached
+                    self.clients[client] = WORKER_IDLE
+                    defer.returnValue((TYPE_MSG, "sleep/%d" % 1))
+
+            d = self.finished()
+            d.addCallback(finalize)
+            yield d
         else:
             #START/TRANS#
-            pipe = self.redis.pipeline()
-            pipe.multi()
-            pipe.lpop('stream')
-            pipe.set('assigned:%s' % client, job)
-            pipe.sadd('ongoing', job)
-            pipe.execute()
+            pipe = yield self.redis.multi()
+            yield pipe.lpop('stream')
+            yield pipe.set('assigned:%s' % client, job)
+            yield pipe.sadd('ongoing', job)
+            yield pipe.commit()
             #END/TRANS#
 
             self.assigned_jobs[client] = job
             self.clients[client] = WORKER_WORKING
 
-            return (TYPE_JOB, job)
+            defer.returnValue((TYPE_JOB, job))
 
     def onNewWorker(self, client):
         pass
 
+    @defer.inlineCallbacks
     def manageLostClient(self, client):
         if self.clients[client] == WORKER_WORKING:
             job = self.assigned_jobs[client]
 
             #START/TRANS#
-            pipe = self.redis.pipeline()
-            pipe.multi()
-            pipe.lpush('stream', job)
-            pipe.delete('assigned:%s' % client)
-            pipe.srem('ongoing', job)
-            pipe.execute()
+            pipe = yield self.redis.multi()
+            yield pipe.lpush('stream', job)
+            yield pipe.delete('assigned:%s' % client)
+            yield pipe.srem('ongoing', job)
+            yield pipe.commit()
             #END/TRANS#
 
             log.msg("Client %s crashed. Job %s recovered" % (client, job))
@@ -237,9 +260,13 @@ class JobTrackerFactory(ServerFactory):
 
         del self.clients[client]
 
-        nickname = self.client_to_nick[client]
-        del self.nick_to_client[nickname]
-        del self.client_to_nick[client]
+        try:
+            nickname = self.client_to_nick[client]
+            del self.nick_to_client[nickname]
+        except:
+            pass
+
+            del self.client_to_nick[client]
 
     def statusCompleted(self, status):
         return status == True
@@ -249,10 +276,11 @@ class JobTrackerFactory(ServerFactory):
         self.clients[client] = WORKER_IDLE
 
         if self.statusCompleted(status):
-            self.onJobCompleted(client, result, status)
+            defer.waitForDeferred(self.onJobCompleted(client, result, status))
         else:
-            self.onJobProgress(client, result, status)
+            defer.waitForDeferred(self.onJobProgress(client, result, status))
 
+    @defer.inlineCallbacks
     def onJobCompleted(self, client, result, status):
         prev_job = self.assigned_jobs[client]
         ret = self.transformJob(result)
@@ -263,36 +291,36 @@ class JobTrackerFactory(ServerFactory):
             log.msg("Job %s is tranformed into %s" % (prev_job, transformed_job))
 
         #START/TRANS#
-        pipe = self.redis.pipeline()
-        pipe.multi()
+        pipe = yield self.redis.multi()
 
         if ret is not None:
             if process_next:
-                pipe.lpush('stream', serialized_result)
+                yield pipe.lpush('stream', serialized_result)
             else:
-                pipe.rpush('stream', serialized_result)
-        
-        pipe.delete('assigned:%s' % client)
-        pipe.srem('ongoing', prev_job)
-        pipe.execute()
+                yield pipe.rpush('stream', serialized_result)
+
+        yield pipe.delete('assigned:%s' % client)
+        yield pipe.srem('ongoing', prev_job)
+        yield pipe.commit()
         #END/TRANS#
 
         del self.assigned_jobs[client]
 
+    @defer.inlineCallbacks
     def onJobProgress(self, client, result, status):
         prev_job = self.assigned_jobs.get(client, None)
         serialized_result = self.jobclass.serialize(result)
 
         #START/TRANS#
-        pipe = self.redis.pipeline()
-        pipe.multi()
+        pipe = yield self.redis.multi()
 
         if self.needsReinsertion(client, result, status):
-            pipe.lpush('stream', serialized_result)
+            log.msg("Reinserting..")
+            yield pipe.lpush('stream', serialized_result)
 
-        pipe.delete('assigned:%s' % client)
-        pipe.srem('ongoing', prev_job)
-        pipe.execute()
+        yield pipe.delete('assigned:%s' % client)
+        yield pipe.srem('ongoing', prev_job)
+        yield pipe.commit()
         #END/TRANS#
 
     def getPreviousJob(self, client):
