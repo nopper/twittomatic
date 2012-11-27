@@ -67,6 +67,9 @@ USERS_SEEDS     = 'users.seeds'
 USERS_DISCARDED = 'users.discarded' # Not entirely necessary. Just used as a cache mechanism
 USERS_SELECTED  = 'users.selected'
 
+LOG_LIST = 'logger'
+LOG_SCROLLBACK = 300
+
 # Used by the stats server module
 CARBON_SERVER = '127.0.0.1'
 CARBON_PORT = 2003

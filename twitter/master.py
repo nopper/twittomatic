@@ -4,6 +4,7 @@ import settings
 from crawler.master import *
 from twitter.const import *
 from twitter.job import TwitterJob
+from twitter.modules.redislogger import RedisLogObserver
 
 import gzip
 from tempfile import NamedTemporaryFile
@@ -343,10 +344,14 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
 
 
 def main(options):
+
+    connection = settings.REDIS_CLASS()
+
     log.startLogging(sys.stdout)
     log.startLogging(DailyLogFile.fromFullPath(os.path.join(settings.LOG_DIRECTORY, 'master.log')), setStdout=1)
+    log.addObserver(RedisLogObserver(connection).emit)
 
-    factory = TwitterJobTrackerFactory(settings.REDIS_CLASS(), TwitterJob, settings.MAX_CLIENTS, options=options)
+    factory = TwitterJobTrackerFactory(connection, TwitterJob, settings.MAX_CLIENTS, options=options)
     reactor.listenTCP(settings.JT_PORT, factory)
     reactor.run()
 

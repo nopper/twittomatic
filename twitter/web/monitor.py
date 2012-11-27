@@ -12,7 +12,7 @@ import os
 import json
 import redis
 
-from twitter.settings import LOOKUP_DATABASE, MONITOR_PORT, MONITOR_URL
+from twitter.settings import LOOKUP_DATABASE, MONITOR_PORT, MONITOR_URL, LOG_LIST, LOG_SCROLLBACK
 from flask import Flask, Response, request, render_template
 
 TEMPLATE_ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -43,20 +43,20 @@ def main():
         'stats.worker.completed.update',
     ]
 
-    pipe = r.pipeline()
+    results = r.mget(keywords)
+    stats = dict(zip(keywords, results))
 
-    for key in keywords:
-        pipe.get(key)
-
-    stats = dict(zip(keywords, pipe.execute()))
-    
     first_five = r.lrange('stream', 0, 5)
     first_five_error = r.lrange('error_stream', 0, 5)
+
+    logs = r.lrange(LOG_LIST, 0, LOG_SCROLLBACK)
+    logs.reverse()
 
     return render_template('templates/monitor_main.html',
         statistics=stats,
         stream=first_five,
         error_stream=first_five_error,
+        logs=logs
     )
 
 def receiveInformations():
