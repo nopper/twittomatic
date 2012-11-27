@@ -49,7 +49,7 @@ class FollowerReader(object):
 
         del iterable
         self.iterable = iter(self.file)
-        self.current_line = 0
+        self.current_line = 1
 
     def get_followers(self):
         for lineno, line in enumerate(self.iterable):
@@ -120,7 +120,7 @@ def analyze_followers(reader, already_processed=lambda x: False, progress_cb=lam
                 count += 1
                 r, collection, msg, sleep_time = fetcher.fetch_url('post', LOOKUP_URL, data=payload, log_request=False)
             except fetcher.TooManyAttemptsException:
-                return (MSG_BAN, lookup_infos, 60, current_line)
+                return (MSG_BAN, lookup_infos, 60, reader.current_line)
 
         if msg == MSG_OK:
             lookup_infos.extend(collection)
