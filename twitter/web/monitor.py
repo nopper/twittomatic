@@ -12,7 +12,7 @@ import os
 import json
 import redis
 
-from twitter.settings import LOOKUP_DATABASE, MONITOR_PORT, MONITOR_URL, LOG_LIST, LOG_SCROLLBACK
+from twitter.settings import LOOKUP_DATABASE, MONITOR_PORT, MONITOR_URL, LOG_LIST, LOG_SCROLLBACK, GRAPHITE_URL
 from flask import Flask, Response, request, render_template
 
 TEMPLATE_ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -46,6 +46,18 @@ def main():
     results = r.mget(keywords)
     stats = dict(zip(keywords, results))
 
+    timeline = int(stats['stats.worker.ongoing.timeline'])
+    follower = int(stats['stats.worker.ongoing.follower'])
+    analyzer = int(stats['stats.worker.ongoing.analyzer'])
+    update = int(stats['stats.worker.ongoing.update'])
+
+    total = float(timeline + follower + analyzer + update)
+
+    timeline = (timeline / total) * 100
+    follower = (follower / total) * 100
+    analyzer = (analyzer / total) * 100
+    update = (update / total) * 100
+
     first_five = r.lrange('stream', 0, 5)
     first_five_error = r.lrange('error_stream', 0, 5)
 
@@ -56,7 +68,12 @@ def main():
         statistics=stats,
         stream=first_five,
         error_stream=first_five_error,
-        logs=logs
+        logs=logs,
+        timeline_percentage=timeline,
+        follower_percentage=follower,
+        analyze_percentage=analyzer,
+        update_percentage=update,
+        graphite_url=GRAPHITE_URL
     )
 
 def receiveInformations():
