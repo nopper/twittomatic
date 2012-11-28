@@ -96,7 +96,7 @@ def set_rate(response):
 
     return response
 
-@app.route('/1.1/statuses/user_timeline.json')
+@app.route('/1/statuses/user_timeline.json')
 def lookup_by_userid():
     max_id = request.args.get('max_id', '')
     since_id = request.args.get('since_id', '')
@@ -123,7 +123,7 @@ def lookup_by_userid():
     except KeyError:
         return set_rate(Response('', status=404, mimetype='application/json'))
 
-@app.route('/1.1/followers/ids.json')
+@app.route('/1/followers/ids.json')
 def get_followers_ids():
     user_id = request.args.get('user_id', '')
     cursor  = request.args.get('cursor', '')
@@ -139,7 +139,7 @@ def get_followers_ids():
     except KeyError:
         return set_rate(Response('', status=404, mimetype='application/json'))
 
-@app.route('/1.1/users/lookup.json', methods=['POST'])
+@app.route('/1/users/lookup.json', methods=['POST'])
 def lookup_users():
     lookup = []
     user_ids = request.form.get('user_id', '')
