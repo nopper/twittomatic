@@ -107,6 +107,10 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
                     if assigned_keys:
                         pipe.delete(*assigned_keys)
                     pipe.delete('master.refcount')
+                    pipe.set('stats.worker.ongoing.timeline', 0)
+                    pipe.set('stats.worker.ongoing.follower', 0)
+                    pipe.set('stats.worker.ongoing.analyzer', 0)
+                    pipe.set('stats.worker.ongoing.update', 0)
                     pipe.execute()
 
                     log.msg("%d jobs successfully recovered" % len(assigned_jobs))
