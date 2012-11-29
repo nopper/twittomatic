@@ -9,6 +9,7 @@ from twitter.modules.redislogger import RedisLogObserver
 import gzip
 from tempfile import NamedTemporaryFile
 
+from redis import WatchError
 from twisted.python import log
 from twisted.python.logfile import DailyLogFile
 
@@ -68,7 +69,60 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
         })
 
     def recoverFromCrash(self):
-        raise Exception("Not implemented yet")
+        """
+        Here we need to remove all the keys from redis that are listed as assigned:
+        and push back from ongoing to the stream all the works
+        """
+        abort = False
+
+        if not options.want_recovery:
+            log.msg("A crash condition was detected but the --recovery flag is not enabled")
+            sys.exit(0)
+        else:
+            log.msg("A crash condition was detected.")
+
+        with self.redis.pipeline() as pipe:
+            try:
+                pipe.watch('ongoing')
+                pipe.watch('master.refcount')
+                assigned_jobs = pipe.smembers('ongoing')
+                assigned_keys = pipe.keys('assigned:*')
+
+                if assigned_keys:
+                    values = set(pipe.mget(assigned_keys))
+                else:
+                    values = set([])
+
+                if values != assigned_jobs:
+                    log.msg('Assigned jobs does not match the ongoing set')
+                    abort = True
+                else:
+                    pipe.multi()
+
+                    for job in assigned_jobs:
+                        log.msg("Reinserting %s in stream queue" % job)
+                        pipe.lpush('stream', job)
+
+                    pipe.delete('ongoing')
+                    if assigned_keys:
+                        pipe.delete(*assigned_keys)
+                    pipe.delete('master.refcount')
+                    pipe.execute()
+
+                    log.msg("%d jobs successfully recovered" % len(assigned_jobs))
+
+            except WatchError, e:
+                log.msg('A watched variable was modified. Aborting')
+                abort = True
+
+            except Exception, e:
+                log.msg("Unknown error condition")
+                log.err()
+                abort = True
+
+        if abort:
+            log.msg("Aborting recovery as requested")
+            sys.exit(0)
 
     def initializeStatistics(self, attrs):
         self.initialized = True
@@ -371,6 +425,8 @@ if __name__ == "__main__":
                       help="Load the users from this file")
     parser.add_option("--stream-file", dest="stream_file",
                       help="Load the users from this file into the stream to be processed")
+    parser.add_option("--recovery", dest="want_recovery", action="store_true", default=False,
+                      help="Issue a recovery phase in case of master crash")
 
     (options, args) = parser.parse_args()
     main(options)
