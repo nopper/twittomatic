@@ -75,3 +75,6 @@ CARBON_SERVER = '127.0.0.1'
 CARBON_PORT = 2003
 
 GRAPHITE_URL = 'http://localhost:8080'
+
+USE_HDFS = False
+HDFS_DIRECTORY = '/twitter/'

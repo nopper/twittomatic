@@ -8,7 +8,15 @@ from contextlib import contextmanager
 from twitter.settings import *
 from twisted.python import log
 
-def get_filename(user_id, extension, create=True):
+if USE_HDFS:
+    from pydoop import hdfs
+
+    hdfs_handle = hdfs.fs.hdfs()
+
+def get_filename(user_id, extension, create=True, hdfs_dest=False):
+    if hdfs_dest:
+        return os.path.join(HDFS_DIRECTORY, str(user_id)[:2], "%s.%s" % (user_id, extension))
+
     dirname = os.path.join(OUTPUT_DIRECTORY, str(user_id)[:2])
 
     if create and not os.path.exists(dirname):
@@ -28,7 +36,7 @@ def copy_contents(user_id, extension, dest):
 
 @contextmanager
 def profiled(str):
-    start = datetime.datetime.now() 
+    start = datetime.datetime.now()
     yield start
     diff = datetime.datetime.now() - start
     log.msg(str % diff)
@@ -44,7 +52,7 @@ def new_tempfile():
     return TemporaryFile(prefix='twitter-')
 
 def commit_file_compressed(srcfile, user_id, extension):
-    dstfilename = get_filename(user_id, extension, create=True)
+    dstfilename = get_filename(user_id, extension, create=True, hdfs_dest=USE_HDFS)
 
     with profiled("Uploading of output in %s"):
         # Atomic rename on POSIX
@@ -52,7 +60,22 @@ def commit_file_compressed(srcfile, user_id, extension):
         srcfile.close()
 
         # Race condition here?
-        os.rename(srcfile.name, dstfilename)
+        if USE_HDFS:
+
+            if hdfs.path.exists(dstfilename):
+                if hdfs.path.exists(dstfilename + '.new'):
+                    log.msg("Apparently a crashed worker left an unused file left")
+                    hdfs_handle.delete(dstfilename + '.new')
+
+                hdfs.put(srcfile.name, dstfilename + '.new')
+                hdfs_handle.delete(dstfilename)
+                hdfs_handle.rename(dstfilename + '.new', dstfilename)
+            else:
+                hdfs.put(srcfile.name, dstfilename)
+
+            os.unlink(srcfile.name)
+        else:
+            os.rename(srcfile.name, dstfilename)
 
 def commit_file(srcfile, user_id, extension):
     # We need to copy the file contents to the original location
@@ -81,7 +104,7 @@ def local_copy(user_id, extension, mode):
     """
 
     # If we are just reading the file do not create an additional copy
-    if mode == READ:
+    if mode == READ and not USE_HDFS:
         srcfilename = get_filename(user_id, extension, create=False)
         with gzip.open(srcfilename, 'rb') as srcfile:
             yield srcfile, StatsFile()
@@ -90,19 +113,30 @@ def local_copy(user_id, extension, mode):
 
     with profiled("Downloading local copy in %s"):
         dstfile = TemporaryFile(prefix='twitter-')
-        srcfilename = get_filename(user_id, extension, create=False)
+        srcfilename = get_filename(user_id, extension, create=False, hdfs_dest=USE_HDFS)
 
-        if os.path.exists(srcfilename):
-            with gzip.open(srcfilename, 'rb') as srcfile:
-                shutil.copyfileobj(srcfile, dstfile)
-                log.msg("Original decompressed file size is %d bytes" % srcfile.tell())
+        if USE_HDFS:
+            exists = hdfs.path.exists
+            open_file = hdfs.open
+        else:
+            exists = os.path.exists
+            open_file = open
+
+        if exists(srcfilename):
+            with open_file(srcfilename) as filehandle:
+                with gzip.GzipFile('rb', fileobj=filehandle) as srcfile:
+                    shutil.copyfileobj(srcfile, dstfile)
+                    log.msg("Original decompressed file size is %d bytes" % srcfile.tell())
 
     # A flag indicating whether is compressed or not would be better
     if mode & READ or mode & WRITE:
         dstfile.seek(0)
-    
+
     stats = StatsFile()
     yield dstfile, stats
+
+    if mode == READ and USE_HDFS:
+        return
 
     dstfile.flush()
 
