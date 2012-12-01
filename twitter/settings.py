@@ -44,7 +44,10 @@ MONITOR_URL = 'http://localhost:%d' % MONITOR_PORT
 
 # Just used for testing
 
-TWITTER_TIMEOUT = 30
+TWITTER_MAXATTEMPTS = 4
+TWITTER_TIMEOUT_FACTOR = 2.35 # A maximum timeout of 2.35 ** 4
+TWITTER_TOOMANY_SLEEP = 60
+
 TWITTER_URL = "http://api.twitter.com/1/" # This requires no authentication
 # TWITTER_URL = "http://localhost:5000/1/"
 

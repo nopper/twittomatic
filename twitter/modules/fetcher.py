@@ -70,13 +70,15 @@ def fetch_url(method, url, data=None, auth=None, log_request=True):
     attempts = 0
     method = getattr(requests, method)
 
-    while attempts <= MAX_ATTEMPTS:
+    while attempts < settings.TWITTER_MAXATTEMPTS:
         try:
-            if log_request:
-                log.msg("Fetcher: URL: %s" % url)
-
             attempts += 1
-            r = method(url, data=data, auth=auth, headers=randomize_ua(), timeout=settings.TWITTER_TIMEOUT)
+            timeout = round(settings.TWITTER_TIMEOUT_FACTOR ** attempts)
+
+            if log_request:
+                log.msg("Fetcher: URL: %s Timeout: %d" % (url, timeout))
+
+            r = method(url, data=data, auth=auth, headers=randomize_ua(), timeout=timeout)
             msg, sleep_time = get_sleep_time(r)
 
             if msg == MSG_OK:
@@ -91,7 +93,7 @@ def fetch_url(method, url, data=None, auth=None, log_request=True):
 
             return r, content, msg, sleep_time
         except Exception, exc:
-            log.msg("Fetcher: ERROR: Attempt %d/%d: %s" % (attempts, MAX_ATTEMPTS, str(exc)))
+            log.msg("Fetcher: ERROR: Attempt %d/%d: %s" % (attempts, settings.TWITTER_MAXATTEMPTS, str(exc)))
             continue
 
     raise TooManyAttemptsException("Error while fetching %s. Too many attempts %d" % (url, attempts))

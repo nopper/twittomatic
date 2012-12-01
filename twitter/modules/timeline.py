@@ -34,7 +34,7 @@ def fetch_timeline(user_id=None, screen_name=None, last_tweet_id=-1, since_id=-1
             count += 1
             r, collection, msg, sleep_time = fetcher.fetch_url('get', url)
         except fetcher.TooManyAttemptsException:
-            return (MSG_BAN, timeline, 60)
+            return (MSG_BAN, timeline, settings.TWITTER_TOOMANY_SLEEP)
 
         if msg == MSG_OK:
             if len(collection) == 0:
@@ -93,7 +93,7 @@ def crawl_timeline(user_id, must_include=lambda x: True):
 
         # Signal completion
         must_include(None)
-        
+
         response = TwitterResponse(TwitterResponse.msg_to_status(msg),
             user_id,
             0,

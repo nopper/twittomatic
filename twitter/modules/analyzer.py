@@ -120,7 +120,7 @@ def analyze_followers(reader, already_processed=lambda x: False, progress_cb=lam
                 count += 1
                 r, collection, msg, sleep_time = fetcher.fetch_url('post', LOOKUP_URL, data=payload, log_request=False)
             except fetcher.TooManyAttemptsException:
-                return (MSG_BAN, lookup_infos, 60, reader.current_line)
+                return (MSG_BAN, lookup_infos, settings.TWITTER_TOOMANY_SLEEP, reader.current_line)
 
         if msg == MSG_OK:
             lookup_infos.extend(collection)

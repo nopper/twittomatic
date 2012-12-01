@@ -28,7 +28,7 @@ def fetch_followers(user_id=None, screen_name=None, cursor=-1, max_requests=-1):
             count += 1
             r, data, msg, sleep_time = fetcher.fetch_url('get', url)
         except fetcher.TooManyAttemptsException:
-            return (MSG_BAN, followers, 60)
+            return (MSG_BAN, followers, settings.TWITTER_TOOMANY_SLEEP, cursor)
 
         if msg == MSG_OK:
             followers.extend(data['ids'])
