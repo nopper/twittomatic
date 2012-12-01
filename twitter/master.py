@@ -8,6 +8,7 @@ from twitter.modules.redislogger import RedisLogObserver
 
 import gzip
 from tempfile import NamedTemporaryFile
+from collections import defaultdict
 
 from redis import WatchError
 from twisted.python import log
@@ -27,6 +28,9 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
 
         if self.options.seeds_file:
             self.loadSeedsFrom(self.options.seeds_file)
+
+        if self.options.ha > 0:
+            self.master_id = self.options.ha
 
         self.transformation = 0
 
@@ -75,18 +79,15 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
         """
         abort = False
 
-        if not options.want_recovery:
-            log.msg("A crash condition was detected but the --recovery flag is not enabled")
-            sys.exit(0)
-        else:
-            log.msg("A crash condition was detected.")
-
         with self.redis.pipeline() as pipe:
             try:
-                pipe.watch('ongoing')
+                pipe.watch('ongoing:%d' % options.ha)
                 pipe.watch('master.refcount')
-                assigned_jobs = pipe.smembers('ongoing')
-                assigned_keys = pipe.keys('assigned:*')
+
+                log.msg("Checking if master with id %d left some works" % self.options.ha)
+
+                assigned_keys = self.redis.keys('assigned:%d:*' % self.options.ha)
+                assigned_jobs = pipe.smembers('ongoing:%d' % self.options.ha)
 
                 if assigned_keys:
                     values = set(pipe.mget(assigned_keys))
@@ -96,21 +97,36 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
                 if values != assigned_jobs:
                     log.msg('Assigned jobs does not match the ongoing set')
                     abort = True
+
+                if len(assigned_keys) == 0:
+                    log.msg("Master with id %d is clean" % self.options.ha)
+                    return
+
+                if not self.options.want_recovery:
+                    log.msg("A crash condition was detected but the --recovery flag is not enabled")
+                    abort = True
                 else:
+                    log.msg("A crash condition was detected. Trying to recover")
                     pipe.multi()
 
                     for job in assigned_jobs:
                         log.msg("Reinserting %s in stream queue" % job)
                         pipe.lpush('stream', job)
 
-                    pipe.delete('ongoing')
+                    pipe.delete('ongoing:%d' % self.options.ha)
                     if assigned_keys:
                         pipe.delete(*assigned_keys)
-                    pipe.delete('master.refcount')
-                    pipe.set('stats.worker.ongoing.timeline', 0)
-                    pipe.set('stats.worker.ongoing.follower', 0)
-                    pipe.set('stats.worker.ongoing.analyzer', 0)
-                    pipe.set('stats.worker.ongoing.update', 0)
+
+                    counter = defaultdict(int)
+                    for value in values:
+                        job = self.jobclass.deserialize(job)
+                        counter[job.operation] += 1
+
+                    pipe.decr('master.refcount')
+                    pipe.decr('stats.worker.ongoing.timeline', counter[TwitterJob.TIMELINE_OP])
+                    pipe.decr('stats.worker.ongoing.follower', counter[TwitterJob.FOLLOWER_OP])
+                    pipe.decr('stats.worker.ongoing.analyzer', counter[TwitterJob.ANALYZER_OP])
+                    pipe.decr('stats.worker.ongoing.update', counter[TwitterJob.UPDATE_OP])
                     pipe.execute()
 
                     log.msg("%d jobs successfully recovered" % len(assigned_jobs))
@@ -218,17 +234,19 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
             log.msg('=== STATISTICS ===')
             JobTrackerFactory.summary(self)
 
-            otstats, ofstats, oastats, oustats = \
-                int(self.redis.get('stats.worker.ongoing.timeline')), \
-                int(self.redis.get('stats.worker.ongoing.follower')), \
-                int(self.redis.get('stats.worker.ongoing.analyzer')), \
-                int(self.redis.get('stats.worker.ongoing.update'))
-
-            ctstats, cfstats, castats, custats = \
-                int(self.redis.get('stats.worker.completed.timeline')), \
-                int(self.redis.get('stats.worker.completed.follower')), \
-                int(self.redis.get('stats.worker.completed.analyzer')), \
-                int(self.redis.get('stats.worker.completed.update'))
+            otstats, ofstats, oastats, oustats, \
+            ctstats, cfstats, castats, custats = map(lambda x: (x) and int(x) or 0,
+                self.redis.mget((
+                    'stats.worker.ongoing.timeline',
+                    'stats.worker.ongoing.follower',
+                    'stats.worker.ongoing.analyzer',
+                    'stats.worker.ongoing.update',
+                    'stats.worker.completed.timeline',
+                    'stats.worker.completed.follower',
+                    'stats.worker.completed.analyzer',
+                    'stats.worker.completed.update',
+                ))
+            )
 
             log.msg("STATS: ONGOING:   Timeline: %d Follower: %d Analyzer: %d Update: %d" % \
                     (otstats, ofstats, oastats, oustats))
@@ -410,7 +428,7 @@ def main(options):
     log.addObserver(RedisLogObserver(connection).emit)
 
     factory = TwitterJobTrackerFactory(connection, TwitterJob, settings.MAX_CLIENTS, options=options)
-    reactor.listenTCP(settings.JT_PORT, factory)
+    reactor.listenTCP(settings.JT_PORT + options.ha, factory)
     reactor.run()
 
 if __name__ == "__main__":
@@ -431,6 +449,8 @@ if __name__ == "__main__":
                       help="Load the users from this file into the stream to be processed")
     parser.add_option("--recovery", dest="want_recovery", action="store_true", default=False,
                       help="Issue a recovery phase in case of master crash")
+    parser.add_option("--ha", dest="ha", type="int", default=0,
+                      help="Specify the ID of the master in high-availability (experimental)")
 
     (options, args) = parser.parse_args()
     main(options)

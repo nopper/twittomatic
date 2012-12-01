@@ -14,18 +14,18 @@ WORKER_WORKING = 1
 
 class JobTrackerProtocol(LineReceiver):
     def connectionMade(self):
-        self.client_ip = self.transport.getPeer()
+        self.client_id = self.factory.mkhash(self.transport.getPeer())
         self.status = WORKER_IDLE
 
-        log.msg("Worker connection from %s" % self.client_ip)
+        log.msg("Worker connection from %s" % self.transport.getPeer())
 
         if len(self.factory.clients) >= self.factory.clients_max:
             log.msg("Worker limit reached")
-            self.client_ip = None
+            self.client_id = None
             self.transport.loseConnection()
         else:
-            self.factory.clients[self.client_ip] = WORKER_IDLE
-            self.factory.onNewWorker(self.client_ip)
+            self.factory.clients[self.client_id] = WORKER_IDLE
+            self.factory.onNewWorker(self.client_id)
 
     def deserialize(self, data):
         return json.loads(data)
@@ -36,7 +36,7 @@ class JobTrackerProtocol(LineReceiver):
     def onRequest(self, msg):
         assert self.status == WORKER_IDLE
 
-        type, job = self.factory.assignJobTo(self.client_ip)
+        type, job = self.factory.assignJobTo(self.client_id)
 
         if type == TYPE_JOB:
             self.writeMessage({
@@ -58,13 +58,13 @@ class JobTrackerProtocol(LineReceiver):
         result = self.factory.jobclass.deserialize(msg['result'])
         status = msg['status']
 
-        self.factory.jobProgress(self.client_ip, result, status)
-        self.factory.notifyProgress(self.client_ip, result, status, msg.get('attributes', {}))
+        self.factory.jobProgress(self.client_id, result, status)
+        self.factory.notifyProgress(self.client_id, result, status, msg.get('attributes', {}))
 
     def onRegister(self, msg):
         nickname = msg['nickname']
 
-        if self.client_ip in self.factory.client_to_nick:
+        if self.client_id in self.factory.client_to_nick:
             self.writeMessage({
                 'message': 'error/already registered'
             })
@@ -78,9 +78,9 @@ class JobTrackerProtocol(LineReceiver):
             self.transport.loseConnection()
             return
 
-        self.factory.client_to_nick[self.client_ip] = nickname
-        self.factory.nick_to_client[nickname] = self.client_ip
-        log.msg("%s successfully registered with nickname %s" % (self.client_ip, nickname))
+        self.factory.client_to_nick[self.client_id] = nickname
+        self.factory.nick_to_client[nickname] = self.client_id
+        log.msg("%s successfully registered with nickname %s ID: %s" % (self.transport.getPeer(), nickname, self.client_id))
 
     def lineReceived(self, data):
         try:
@@ -103,8 +103,8 @@ class JobTrackerProtocol(LineReceiver):
         self.transport.write(self.serialize(msg) + '\r\n')
 
     def connectionLost(self, reason):
-        if self.client_ip in self.factory.clients:
-            self.factory.manageLostClient(self.client_ip)
+        if self.client_id in self.factory.clients:
+            self.factory.manageLostClient(self.client_id)
 
 class JobTrackerFactory(ServerFactory):
     protocol = JobTrackerProtocol
@@ -124,6 +124,7 @@ class JobTrackerFactory(ServerFactory):
 
         self.redis = redis
         self.jobclass = jobclass
+        self.master_id = 0
 
         self.assigned_jobs = {}
 
@@ -141,6 +142,9 @@ class JobTrackerFactory(ServerFactory):
 
         self.redis.incr('master.refcount')
 
+    def mkhash(self, client_ip):
+        return '%d:%s:%d' % (self.master_id, client_ip.host, client_ip.port)
+
     def getNickname(self, client):
         return self.client_to_nick[client]
 
@@ -157,13 +161,13 @@ class JobTrackerFactory(ServerFactory):
     def summary(self):
         num_items = self.redis.llen('stream')
         num_workers = len(self.clients)
-        active_workers = self.redis.scard('ongoing')
+        active_workers = self.redis.scard('ongoing:%d' % self.master_id)
 
         if num_workers == 0:
             active_percentage = 'N/A'
         else:
             active_percentage = '%02d%%' % ((active_workers / (num_workers * 1.0)) * 100)
-    
+
         log.msg("STATS: Number of workers: %d" % num_workers)
         log.msg("STATS: Number of active workers: %d [percentage: %s]" % (active_workers, active_percentage))
         log.msg("STATS: Number of items %d" % num_items)
@@ -171,7 +175,7 @@ class JobTrackerFactory(ServerFactory):
     def finished(self):
         "@return True if we have successfully completed parsing the stream"
         items_left = self.redis.llen('stream')
-        items_ongoing = self.redis.scard('ongoing')
+        items_ongoing = self.redis.scard('ongoing:%d' % self.master_id)
 
         log.msg("Items left: %d Items ongoing: %d" % (items_left, items_ongoing))
         #log.msg("Contents: %s" % str(self.redis._db))
@@ -206,7 +210,7 @@ class JobTrackerFactory(ServerFactory):
             pipe.multi()
             pipe.lpop('stream')
             pipe.set('assigned:%s' % client, job)
-            pipe.sadd('ongoing', job)
+            pipe.sadd('ongoing:%d' % self.master_id, job)
             pipe.execute()
             #END/TRANS#
 
@@ -227,7 +231,7 @@ class JobTrackerFactory(ServerFactory):
             pipe.multi()
             pipe.lpush('stream', job)
             pipe.delete('assigned:%s' % client)
-            pipe.srem('ongoing', job)
+            pipe.srem('ongoing:%d' % self.master_id, job)
             pipe.execute()
             #END/TRANS#
 
@@ -271,9 +275,9 @@ class JobTrackerFactory(ServerFactory):
                 pipe.lpush('stream', serialized_result)
             else:
                 pipe.rpush('stream', serialized_result)
-        
+
         pipe.delete('assigned:%s' % client)
-        pipe.srem('ongoing', prev_job)
+        pipe.srem('ongoing:%d' % self.master_id, prev_job)
         pipe.execute()
         #END/TRANS#
 
@@ -291,7 +295,7 @@ class JobTrackerFactory(ServerFactory):
             pipe.lpush('stream', serialized_result)
 
         pipe.delete('assigned:%s' % client)
-        pipe.srem('ongoing', prev_job)
+        pipe.srem('ongoing:%d' % self.master_id, prev_job)
         pipe.execute()
         #END/TRANS#
 
