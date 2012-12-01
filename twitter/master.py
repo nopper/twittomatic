@@ -418,13 +418,13 @@ if __name__ == "__main__":
 
     parser = OptionParser()
     parser.add_option("-T", action="store_true", dest="timeline",
-                     help="Just download the timeline")
+                      help="Just download the timeline")
     parser.add_option("-F", action="store_true", dest="follower",
-                     help="Just download the followers")
+                      help="Just download the followers")
     parser.add_option("-A", action="store_true", dest="analyze",
-                     help="Just do an analysis")
+                      help="Just do an analysis")
     parser.add_option("-U", action="store_true", dest="update",
-                     help="Just do an update")
+                      help="Just do an update")
     parser.add_option("--seeds-file", dest="seeds_file",
                       help="Load the users from this file")
     parser.add_option("--stream-file", dest="stream_file",

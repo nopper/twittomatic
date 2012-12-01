@@ -32,7 +32,6 @@ class GraphiteCollector(object):
                         lines.append("%s %d %d" % (key, value, now))
 
                     msg = '\n'.join(lines) + '\n'
-                    print "Sending out", msg
                     self.sock.sendall(msg)
 
                 elif message['channel'].startswith('stats.ops.'):
@@ -64,14 +63,14 @@ if __name__ == "__main__":
 
     parser = OptionParser()
     parser.add_option("-l", action="store_true", dest="load",
-                     help="Import statistics collected to a Graphite server")
+                      help="Import statistics collected to a Graphite server")
     parser.add_option("-s", action="store_true", dest="save",
-                     help="Save the statistics collected to a gzip file")
+                      help="Save the statistics collected to a gzip file")
     parser.add_option("-f", "--file", dest="file",
                       help="File from which or to which store statistics")
 
     (options, args) = parser.parse_args()
- 
+
     if options.file and options.load:
         GraphiteCollector(options.file)
     elif options.file and options.save:
