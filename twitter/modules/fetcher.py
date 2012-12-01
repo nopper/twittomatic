@@ -68,7 +68,8 @@ def fetch_url(method, url, data=None, auth=None, log_request=True):
     """
 
     attempts = 0
-    method = getattr(requests, method)
+    session = requests.session()
+    method = getattr(session, method)
 
     while attempts < settings.TWITTER_MAXATTEMPTS:
         try:
