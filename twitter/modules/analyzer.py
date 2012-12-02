@@ -6,7 +6,7 @@ from twisted.python import log
 
 LOOKUP_URL = settings.TWITTER_URL + "users/lookup.json"
 
-def analyze_followers(reader, start_cursor=0, already_processed=lambda x: False, progress_cb=lambda x: None, max_requests=-1):
+def analyze_followers(reader, start_cursor=0, already_processed=lambda x: False, progress_cb=lambda *args: None, max_requests=-1):
     """
     Analyze a list of followers contained in a given file.
     @param reader is an instance of FollowerReader
@@ -127,9 +127,9 @@ if __name__ == "__main__":
 
     if options.filename:
         with open(options.filename, 'r') as infile:
-            reader = FollowerReader(infile)
+            followers = infile.readlines()
             msg, lookup_infos, sleep_time, _ = analyze_followers(
-                reader,
+                followers,
                 max_requests=options.number
             )
 
