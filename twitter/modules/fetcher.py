@@ -1,7 +1,7 @@
 import json
 import time
 import requests
-from random import choice, randint
+from random import choice
 
 from twitter.const import *
 from twitter import settings

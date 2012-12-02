@@ -1,6 +1,5 @@
 import json
 import struct
-from twitter import settings
 from twitter.modules.fileutils import download, commit_file, copy_contents, new_tempfile
 from twitter.backend.base import TimelineFile as BaseTimelineFile
 from twitter.backend.base import FollowerFile as BaseFollowerFile
