@@ -81,3 +81,8 @@ GRAPHITE_URL = 'http://localhost:8080'
 
 USE_HDFS = False
 HDFS_DIRECTORY = '/twitter/'
+
+STORAGE_CLASS = 'file' # You can choose betweet file and cassandra
+CASSANDRA_KEYSPACE = 'crawler'
+
+USE_COMPRESSION = True

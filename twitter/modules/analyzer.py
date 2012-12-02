@@ -1,80 +1,12 @@
-import json
-import errno
 from twitter import settings
 from twitter.const import *
-from twitter.modules import TwitterResponse, fileutils, fetcher
+from twitter.modules import TwitterResponse, fetcher
+from twitter.backend import FollowerFile
 from twisted.python import log
 
 LOOKUP_URL = settings.TWITTER_URL + "users/lookup.json"
 
-class FollowerReader(object):
-    """
-    Here lines start from 1
-    """
-    def __init__(self, file, filename, start_line=1):
-        assert start_line > 0
-
-        self.file = file
-        self.filename = filename
-        self.start_line = start_line
-        self.follower_count = 0
-        self.total_lines = 0
-
-        lineno = 0
-        set_position = None
-        iterable = iter(self.file)
-
-        while True:
-            try:
-                position = self.file.tell()
-                line = iterable.next()
-                lineno += 1
-                self.total_lines += 1
-
-                if lineno >= start_line and set_position is None:
-                    set_position = position
-
-                if line.strip():
-                    try:
-                        int(line.strip())
-                        self.follower_count += 1
-                    except:
-                        pass
-
-            except StopIteration:
-                break
-
-        if set_position is not None:
-            self.file.seek(set_position, 0)
-
-        del iterable
-        self.iterable = iter(self.file)
-        self.current_line = 1
-
-    def get_followers(self):
-        for lineno, line in enumerate(self.iterable):
-            self.current_line = lineno + self.start_line
-
-            if not line or not line.strip():
-                continue
-
-            follower_id = None
-
-            try:
-                follower_id = int(line.strip())
-            except:
-                log.msg("Error in file %s at line %d: %s is not convertible to a user_id" % \
-                    (self.filename, self.current_line, line.strip()))
-
-            if follower_id is not None:
-                yield (self.current_line, follower_id)
-
-    def __str__(self):
-        return "FollowerReader: %s start line: %d current line: %d" % \
-            (self.filename, self.start_line, self.current_line)
-
-
-def analyze_followers(reader, already_processed=lambda x: False, progress_cb=lambda x: None, max_requests=-1):
+def analyze_followers(reader, start_cursor=0, already_processed=lambda x: False, progress_cb=lambda x: None, max_requests=-1):
     """
     Analyze a list of followers contained in a given file.
     @param reader is an instance of FollowerReader
@@ -83,24 +15,17 @@ def analyze_followers(reader, already_processed=lambda x: False, progress_cb=lam
            already processed.
     """
 
-    assert isinstance(reader, FollowerReader)
-    assert reader.follower_count > 0
-
     count = 0
     batch = []
     lookup_infos = []
-    iterable = reader.get_followers()
-    current_line = reader.current_line
+    current_cursor = start_cursor
 
     while True:
         consumed = False
 
-        while len(batch) < BATCH_LIMIT:
-            try:
-                _, follower_id = iterable.next()
-            except StopIteration:
-                consumed = True
-                break
+        while len(batch) < BATCH_LIMIT and start_cursor < len(reader):
+            follower_id = reader[start_cursor]
+            start_cursor += 1
 
             if not already_processed(follower_id):
                 batch.append(follower_id)
@@ -120,74 +45,71 @@ def analyze_followers(reader, already_processed=lambda x: False, progress_cb=lam
                 count += 1
                 r, collection, msg, sleep_time = fetcher.fetch_url('post', LOOKUP_URL, data=payload, log_request=False)
             except fetcher.TooManyAttemptsException:
-                return (MSG_BAN, lookup_infos, settings.TWITTER_TOOMANY_SLEEP, reader.current_line)
+                return (MSG_BAN, lookup_infos, settings.TWITTER_TOOMANY_SLEEP, current_cursor)
 
         if msg == MSG_OK:
             lookup_infos.extend(collection)
-            current_line = reader.current_line
+            current_cursor = start_cursor
 
             if len(batch) > 0:
-                progress_cb(lookup_infos)
+                progress_cb(lookup_infos, current_cursor, len(reader))
 
             batch = []
             # Jump below
         else:
-            return (msg, lookup_infos, sleep_time, current_line)
+            return (msg, lookup_infos, sleep_time, current_cursor)
 
         if max_requests > 0 and count >= max_requests:
-            return (msg, lookup_infos, sleep_time, current_line)
+            return (msg, lookup_infos, sleep_time, current_cursor)
 
         if consumed:
-            return (msg, lookup_infos, sleep_time, current_line)
+            return (msg, lookup_infos, sleep_time, current_cursor)
 
-def analyze_followers_of(user_id, start_line=1,
+def analyze_followers_of(user_id, start_cursor=0,
                          already_processed=lambda x: False,
                          must_follow=lambda x: True):
 
     log.msg("Analyzing followers of user_id %d" % user_id)
 
-    try:
-        with fileutils.open_file(user_id, 'fws', mode=fileutils.READ) as status:
-            file, stats = status
-            reader = FollowerReader(file, str(user_id) + '.fws', start_line)
+    reader = FollowerFile(user_id)
 
-            def log_progress(lookup_infos):
-                log.msg("user_id %d Follower file: analyzed %d of %d [%02d%%]" % \
-                        (user_id, reader.current_line, reader.total_lines,
-                         100 * (reader.current_line / float(reader.total_lines))))
+    if len(reader) == 0:
+        log.msg("Follower file for user_id %d is not present. Bogus data?" % user_id)
 
-            msg, lookup_infos, sleep_time, current_line = analyze_followers(
-                reader, already_processed=already_processed,
-                progress_cb=log_progress
-            )
+        # Let's treat this as not found user
+        return TwitterResponse(STATUS_UNAUTHORIZED, user_id, start_cursor, 0)
 
-            included = []
+    def log_progress(lookup_infos, current, total):
+        log.msg("user_id %d Follower file: analyzed %d of %d [%02d%%]" % \
+                (user_id, current, total,
+                 100 * (current / float(total))))
 
-            for info in lookup_infos:
-                if must_follow(info):
-                    included.append(info['id_str'])
+    msg, lookup_infos, sleep_time, current_line = analyze_followers(
+        reader, start_cursor=start_cursor,
+        already_processed=already_processed,
+        progress_cb=log_progress
+    )
 
-            total_included = len(included)
-            total_fetched = len(lookup_infos)
+    included = []
 
-            response = TwitterResponse(TwitterResponse.msg_to_status(msg),
-                user_id,
-                current_line,
-                sleep_time
-            )
+    for info in lookup_infos:
+        if must_follow(info):
+            included.append(info['id_str'])
 
-            response['analyzer.total_included'] = total_included
-            response['analyzer.total_fetched'] = total_fetched
-            response['analyzer.target_users'] = included
+    total_included = len(included)
+    total_fetched = len(lookup_infos)
 
-            return response
+    response = TwitterResponse(TwitterResponse.msg_to_status(msg),
+        user_id,
+        current_line,
+        sleep_time
+    )
 
-    except IOError, e:
-        if e.errno == errno.ENOENT:
-            log.msg("Follower file for user_id %d is not present. Bogus data?" % user_id)
+    response['analyzer.total_included'] = total_included
+    response['analyzer.total_fetched'] = total_fetched
+    response['analyzer.target_users'] = included
 
-            # Let's treat this as not found user
-            return TwitterResponse(STATUS_UNAUTHORIZED, user_id, start_line, 0)
+    return response
 
 
 if __name__ == "__main__":

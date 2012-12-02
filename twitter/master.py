@@ -19,6 +19,8 @@ TRANSFORM_FOLLOWER = 2
 TRANSFORM_ANALYZER = 4
 # The updater does not provide any transformation
 
+from twitter.backend import *
+
 class TwitterJobTrackerFactory(JobTrackerFactory):
     def __init__(self, *args, **kwargs):
         self.initialized = False
@@ -179,7 +181,7 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
         elif type == TwitterJob.FOLLOWER_OP:
             fmt = 'F,%d,-1'
         elif type == TwitterJob.ANALYZER_OP:
-            fmt = 'A,%d,1'
+            fmt = 'A,%d,0'
         elif type == TwitterJob.UPDATE_OP:
             fmt = 'U,%d,0'
         else:
@@ -281,7 +283,7 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
         elif result.operation == result.FOLLOWER_OP and \
              self.transformation & (TRANSFORM_ANALYZER):
 
-            return False, TwitterJob(TwitterJob.ANALYZER_OP, result.user_id, 1)
+            return False, TwitterJob(TwitterJob.ANALYZER_OP, result.user_id, 0)
 
         # TODO: please adjust this shit. Signal user process completion.
         # elif result.operation == result.ANALYZER_OP:

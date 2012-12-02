@@ -1,6 +1,7 @@
 from twitter.const import *
 from twitter import settings
-from twitter.modules import TwitterResponse, fileutils, fetcher
+from twitter.modules import TwitterResponse, fetcher
+from twitter.backend import FollowerFile
 from twisted.python import log
 
 FETCH_URL = settings.TWITTER_URL + "followers/ids.json?cursor={:d}&stringify_ids=true"
@@ -58,22 +59,25 @@ def crawl_followers(user_id, cursor=-1, must_include=lambda x: True):
 
     # TODO: in case of duplication errors is better to open it as rw and load
     # all the users in a set thus removing duplicates
-    with fileutils.open_file(user_id, 'fws', mode=fileutils.APPEND) as status:
-        file, stats = status
-        msg, followers, sleep_time, new_cursor = fetch_followers(user_id=user_id, cursor=cursor)
 
-        for follower in followers:
-            file.write("%s\n" % follower)
+    writer = FollowerFile(user_id)
+    msg, followers, sleep_time, new_cursor = fetch_followers(user_id=user_id, cursor=cursor)
 
-        response = TwitterResponse(TwitterResponse.msg_to_status(msg),
-            user_id,
-            new_cursor,
-            sleep_time
-        )
+    for follower in followers:
+        writer.add_follower(follower)
 
-        response['follower.total_fetched'] = len(followers)
-        stats.abort = (response.status == STATUS_ERROR or len(followers) == 0)
-        return response
+    response = TwitterResponse(TwitterResponse.msg_to_status(msg),
+        user_id,
+        new_cursor,
+        sleep_time
+    )
+
+    response['follower.total_fetched'] = len(followers)
+
+    if response.status != STATUS_ERROR and len(followers) > 0:
+        writer.commit()
+
+    return response
 
 if __name__ == "__main__":
     from optparse import OptionParser

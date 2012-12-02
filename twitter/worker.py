@@ -42,18 +42,29 @@ class TwitterTrackerClient(JobTrackerClient):
         self.current_job = job
 
         if job.operation == TwitterJob.TIMELINE_OP:
-            lambda_fun = lambda: exports.crawl_timeline(user_id=job.user_id, must_include=self.monitorTweets)
+            lambda_fun = lambda: exports.crawl_timeline(
+                user_id=job.user_id,
+                must_include=self.monitorTweets,
+            )
 
         elif job.operation == TwitterJob.FOLLOWER_OP:
-            lambda_fun = lambda: exports.crawl_followers(user_id=job.user_id, cursor=job.cursor)
+            lambda_fun = lambda: exports.crawl_followers(
+                user_id=job.user_id,
+                cursor=job.cursor,
+            )
 
         elif job.operation == TwitterJob.ANALYZER_OP:
-            lambda_fun = lambda: exports.analyze_followers_of(user_id=job.user_id, start_line=job.cursor,
-                                                              already_processed=self.factory.alreadyProcessed,
-                                                              must_follow=self.mustFollow)
+            lambda_fun = lambda: exports.analyze_followers_of(
+                user_id=job.user_id,
+                start_cursor=job.cursor,
+                already_processed=self.factory.alreadyProcessed,
+                must_follow=self.mustFollow,
+            )
 
         elif job.operation == TwitterJob.UPDATE_OP:
-            lambda_fun = lambda: exports.update_timeline(user_id=job.user_id)
+            lambda_fun = lambda: exports.update_timeline(
+                user_id=job.user_id,
+            )
 
         # Because lambdas are funny
         if lambda_fun is None:

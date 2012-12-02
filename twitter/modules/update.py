@@ -3,11 +3,10 @@ Simple module to manage updates of the timeline. Work in the opposite
 direction of the timeline module and it actually exploits the fetch_timeline
 of the timeline module
 """
-import json
 from twitter.const import *
 from twitter.modules import TwitterResponse
-from twitter.modules import fileutils
 from twitter.modules.timeline import fetch_timeline
+from twitter.backend import TimelineFile
 from twisted.python import log
 
 def update_timeline(user_id, must_include=lambda x: True):
@@ -22,85 +21,74 @@ def update_timeline(user_id, must_include=lambda x: True):
 
     log.msg("Downloading updates of user_id %d" % user_id)
 
+    writer = TimelineFile(user_id)
+
+    abort = False
+
     try:
+        abort = (writer.get_total() == 0)
+        since_id = int(writer.get_first()['id_str'])
+    except:
+        abort = True
 
-        since_id = -1
-        with fileutils.open_file(user_id, 'twt', mode=fileutils.READ) as status:
-            input, stats = status
+    if abort:
+        log.msg("Timeline file for user_id %d is not present. Bogus data?" % user_id)
 
-            for line in input:
-                tweet = json.loads(line)
-                since_id = int(tweet['id_str'])
-                break
+        # Let's treat this as not found user
+        return TwitterResponse(STATUS_UNAUTHORIZED, user_id, 0, 0)
 
-            if since_id == -1:
-                log.msg('Unable to load last tweet id for user %d' % user_id)
-                return TwitterResponse(STATUS_ERROR,
-                    user_id,
-                    0,
-                    sleep_time
-                )
+    msg, timeline, sleep_time = fetch_timeline(user_id, since_id=since_id)
 
-            msg, timeline, sleep_time = fetch_timeline(user_id, since_id=since_id)
+    if len(timeline) > 0 and msg == MSG_OK:
+        # Here we need to create a new file containing the delta timeline
+        # and also include the previous tweets
 
-            if len(timeline) > 0 and msg == MSG_OK:
-                # Here we need to create a new file containing the delta timeline
-                # and also include the previous tweets
+        total_included = 0
+        total_fetched = len(timeline)
 
-                total_included = 0
-                total_fetched = len(timeline)
+        for tweet in timeline:
+            if must_include(tweet):
+                writer.add_tweet(tweet)
+                total_included += 1
 
-                file = fileutils.new_tempfile()
+        response = TwitterResponse(TwitterResponse.msg_to_status(msg),
+            user_id,
+            0,
+            sleep_time
+        )
 
-                for tweet in timeline:
-                    if must_include(tweet):
-                        file.write("%s\n" % json.dumps(tweet))
-                        total_included += 1
+        response['update.total_included'] = total_included
+        response['update.total_fetched'] = total_fetched
 
-                with fileutils.open_file(user_id, 'twt', mode=fileutils.READ) as status:
-                    input, stats = status
-                    fileutils.copy_contents(input, file)
+        writer.commit()
 
-                fileutils.commit_file(file, user_id, 'twt')
-                file.close()
+        return response
 
-                response = TwitterResponse(TwitterResponse.msg_to_status(msg),
-                    user_id,
-                    0,
-                    sleep_time
-                )
+    # Well this is an unfortunate yet interesting situation which we decided
+    # not to handle at all since. In this case the delta update is not
+    # completely downloaded because may be you hit the rate limit. Therefore
+    # if we write the information we collected in the file we will end up
+    # having a hole in the timeline.
+    # The official REST API documentation specify that you can at most download
+    # the latest 3200 tweets of a twitter account. Assuming you are the unluckiest
+    # person in the world and you have downloaded in a previous round just one
+    # tweet. The delta will be of 3199 tweets. Let's anyway round it to 3200 :D
+    # You have your 150 requests. On each request you get at most 200 tweets.
+    # That is 30.000 tweets.
+    # But since we are very pessimistic let's find out the lower bound in the
+    # number of requests to get that delta in one shot. The minimum number of
+    # requests is 3200 / 200 = 16 requests
 
-                response['update.total_included'] = total_included
-                response['update.total_fetched'] = total_fetched
+    if len(timeline) > 0:
+        log.msg("Very unfortunate condition met during update. Rolling back")
 
-                return response
+    response = TwitterResponse(TwitterResponse.msg_to_status(msg),
+        user_id,
+        0,
+        sleep_time
+    )
 
-            # Well this is an unfortunate yet interesting situation which we decided
-            # not to handle at all since. In this case the delta update is not
-            # completely downloaded because may be you hit the rate limit. Therefore
-            # if we write the information we collected in the file we will end up
-            # having a hole in the timeline.
-            # The official REST API documentation specify that you can at most download
-            # the latest 3200 tweets of a twitter account. Assuming you are the unluckiest
-            # person in the world and you have downloaded in a previous round just one
-            # tweet. The delta will be of 3199 tweets. Let's anyway round it to 3200 :D
-            # You have your 150 requests. On each request you get at most 200 tweets.
-            # That is 30.000 tweets.
-            # But since we are very pessimistic let's find out the lower bound in the
-            # number of requests to get that delta in one shot. The minimum number of
-            # requests is 3200 / 200 = 16 requests
+    response['update.total_included'] = 0
+    response['update.total_fetched'] = len(timeline)
 
-            if len(timeline) > 0:
-                log.msg("Very unfortunate condition met during update. Rolling back")
-
-            return TwitterResponse(TwitterResponse.msg_to_status(msg),
-                user_id,
-                0,
-                sleep_time
-            )
-    except IOError, e:
-        if e.errno == errno.ENOENT:
-            log.msg("Timeline file for user_id %d is not present. Bogus data?" % user_id)
-
-            # Let's treat this as not found user
-            return TwitterResponse(STATUS_UNAUTHORIZED, user_id, 0, 0)
+    return response
