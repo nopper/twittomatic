@@ -12,7 +12,7 @@ import os
 import json
 import redis
 
-from twitter.settings import LOOKUP_DATABASE, MONITOR_PORT, MONITOR_URL, LOG_LIST, LOG_SCROLLBACK, GRAPHITE_URL
+from twitter.settings import LOOKUP_DATABASE, MONITOR_PORT, MONITOR_URL, LOG_LIST, LOG_SCROLLBACK, GRAPHITE_URL, ELASTICSEARCH_URL
 from flask import Flask, Response, request, render_template
 
 TEMPLATE_ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -20,6 +20,10 @@ app = Flask(__name__, template_folder=TEMPLATE_ROOT)
 
 r = redis.StrictRedis()
 statistics = {}
+
+@app.route('/inspect')
+def inspect():
+    return render_template('templates/monitor_map.html', elasticsearch_url=ELASTICSEARCH_URL)
 
 @app.route('/')
 def main():
@@ -53,10 +57,13 @@ def main():
 
     total = float(timeline + follower + analyzer + update)
 
-    timeline = (timeline / total) * 100
-    follower = (follower / total) * 100
-    analyzer = (analyzer / total) * 100
-    update = (update / total) * 100
+    if total > 0:
+        timeline = (timeline / total) * 100
+        follower = (follower / total) * 100
+        analyzer = (analyzer / total) * 100
+        update = (update / total) * 100
+    else:
+        timeline = follower = analyzer = update = 0
 
     first_five = r.lrange('stream', 0, 5)
     first_five_error = r.lrange('error_stream', 0, 5)

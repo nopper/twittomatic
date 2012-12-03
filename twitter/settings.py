@@ -86,3 +86,5 @@ STORAGE_CLASS = 'file' # You can choose betweet file and cassandra
 CASSANDRA_KEYSPACE = 'crawler'
 
 USE_COMPRESSION = True
+
+ELASTICSEARCH_URL = 'http://localhost:9200'
