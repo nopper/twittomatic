@@ -237,7 +237,8 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
             JobTrackerFactory.summary(self)
 
             otstats, ofstats, oastats, oustats, \
-            ctstats, cfstats, castats, custats = map(lambda x: (x) and int(x) or 0,
+            ctstats, cfstats, castats, custats, \
+            ftstats, ffstats, fastats, fupstats = map(lambda x: (x) and int(x) or 0,
                 self.redis.mget((
                     'stats.worker.ongoing.timeline',
                     'stats.worker.ongoing.follower',
@@ -247,6 +248,11 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
                     'stats.worker.completed.follower',
                     'stats.worker.completed.analyzer',
                     'stats.worker.completed.update',
+
+                    'timeline.total_fetched',
+                    'follower.total_fetched',
+                    'analyzer.total_fetched',
+                    'update.total_fetched',
                 ))
             )
 
@@ -267,6 +273,11 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
                 'stats.worker.completed.follower': cfstats,
                 'stats.worker.completed.analyzer': castats,
                 'stats.worker.completed.update': custats,
+
+                'stats.worker.timeline.total_fetched': ftstats,
+                'stats.worker.follower.total_fetched': ffstats,
+                'stats.worker.analyzer.total_fetched': fastats,
+                'stats.worker.update.total_fetched': fupstats,
             }))
 
     def transformJob(self, result):

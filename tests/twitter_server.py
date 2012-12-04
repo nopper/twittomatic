@@ -20,9 +20,32 @@ import json
 import gzip
 import glob
 import time
+import struct
+
+def load_tweets(ds, user_id, filename):
+    with gzip.open(filename, 'r') as input:
+        data = input.readlines()
+        ds[user_id] = data
+
+def load_followers(ds, user_id, filename):
+    followers = []
+
+    with gzip.open(filename, 'r') as input:
+        while True:
+            data = input.read(struct.calcsize("!Q"))
+
+            if not data:
+                break
+
+            followers.append(struct.unpack("!Q", data)[0])
+
+        ds[user_id] = followers
 
 def load_dataset_from(directory):
     print "Loading data from", directory
+
+    global dataset_timeline
+    global dataset_followers
 
     for count, filename in enumerate(glob.glob(os.path.join(directory, '*/*'))):
         try:
@@ -30,24 +53,10 @@ def load_dataset_from(directory):
         except:
             continue
 
-        dataset = None
-        global dataset_timeline
-        global dataset_followers
-        
         if filename.endswith('.twt'):
-            dataset = dataset_timeline
+            load_tweets(dataset_timeline, user_id, filename)
         elif filename.endswith('.fws'):
-            dataset = dataset_followers
-
-        if dataset is not None:
-            try:
-                with gzip.open(filename, 'r') as input:
-                    data = input.readlines()
-                    dataset[user_id] = data
-
-                print "File %s loaded" % filename
-            except:
-                print "Error loading", filename
+            load_followers(dataset_followers, user_id, filename)
 
     print "Dataset successfully loaded. %d files loaded." % count
 
@@ -74,7 +83,7 @@ def get_followers(user_id, cursor=0):
         if len(response) >= 500:
             break
         if count >= cursor:
-            response.append(line.strip())
+            response.append(line)
 
     if count == len(dataset_followers[user_id]) - 1:
         count = 0
@@ -92,7 +101,7 @@ def set_rate(response):
 
     if remaining == -1:
         response.data = json.dumps([])
-        remaining = 8
+        remaining = 100
 
     return response
 
