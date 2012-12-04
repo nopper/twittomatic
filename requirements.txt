@@ -1,0 +1,14 @@
+Flask==0.9
+Jinja2==2.6
+Twisted==12.2.0
+Werkzeug==0.8.3
+gevent==0.13.8
+greenlet==0.4.0
+hiredis==0.1.1
+pyes==0.19.1
+redis==2.7.2
+requests==0.14.2
+urllib3==1.5
+whisper==0.9.10
+wsgiref==0.1.2
+zope.interface==4.0.2
