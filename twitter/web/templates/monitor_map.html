@@ -9,6 +9,8 @@
   <script src="http://d3js.org/d3.v2.js"></script>
   <link href="static/css/markers.css" rel="stylesheet" media="screen">
   <script src="static/js/leaflet.markercluster-src.js"></script>
+  <script src="static/js/bootstrap-datepicker.js"></script>
+  <link href="static/css/datepicker.css" rel="stylesheet" media="screen">
   <style>
 
 body {
@@ -44,15 +46,46 @@ path {
   shape-rendering: crispEdges;
 }
 
+.tweet {
+    border: solid 1px #666;
+    background-color: #ddd;
+    font-size: 12px;
+    font-family: Trebuchet, Helvetica, Arial, sans-serif;
+    padding: 5px 5px;
+    -moz-box-shadow: 2px 2px 3px #e6e6e6;
+    -webkit-box-shadow: 2px 2px 3px #e6e6e6;
+    box-shadow: 2px 2px 3px #e6e6e6;
+    -moz-border-radius: 8px;
+    -webkit-border-radius: 8px;
+    border-radius: 8px;
+    background:-webkit-gradient(linear, left top, left bottom, from(#fff), to(#ddd));
+    margin-bottom: 6px;
+}
+
+
 </style>
 </head>
 <body>
 <div class="container">
   {% block body %}
+    <div class="row">
+        <h3>Select a data range</h3>
+        <div class="span3 input-append date" id="dp-start" data-date="2011-12-02" data-date-format="yyyy-mm-dd">
+            <input class="span2" size="16" type="text" value="2011-12-02">
+            <span class="add-on"><i class="icon-th"></i></span>
+        </div>
+
+        <div class="span3 input-append date" id="dp-stop" data-date="2012-12-02" data-date-format="yyyy-mm-dd">
+            <input class="span2" size="16" type="text" value="2012-12-02">
+            <span class="add-on"><i class="icon-th"></i></span>
+        </div>
+
+        <button id="timeline-update" href="#" class="btn small">Update</button>
+    </div>
 
     <div class="row">
-        <h3>Top 10 hashtags</h3>
-        <div id="pie"></div>
+        <div class="span6" id="pie"></div>
+        <div class="span6" id="timeline-sample"></div>
     </div>
 
     <div class="row">
@@ -91,12 +124,74 @@ map.on('click', function(e) {
 var markers = new L.MarkerClusterGroup();
 map.addLayer(markers);
 
-var load_hashtags = function() {
+var load_sample = function(hashtags, start, stop) {
     $.ajax({
         url: '{{ elasticsearch_url }}/twitter/_search',
         type: 'POST',
         data: JSON.stringify({
-            "query" : { "match_all" : {} },
+          "query": {
+            "terms": {
+              "hashtags": hashtags,
+              "minimum_match": 1,
+              "limit": 10
+            },
+            "constant_score": {
+              "filter": {
+                "range": {
+                  "created_at": {
+                    "from": start,
+                    "to": stop,
+                    "include_lower": false,
+                    "include_upper": false
+                  }
+                }
+              }
+            }
+          },
+          "sort": {
+            "created_at": {
+              "order": "desc"
+            }
+          }
+        }),
+        dataType : 'json',
+        processData: false,
+        success: function(json, statusText, xhr) {
+            $("#timeline-sample").html('');
+            json.hits.hits.forEach(function(d) {
+                var tweethtml = "<div class='tweet'>@" + d._source.screen_name + ": " +
+                                d._source.text + "</div>";
+                $("#timeline-sample").append(tweethtml);
+            });
+        },
+        error: function(xhr, message, error) {
+            console.error("Error while loading data from ElasticSearch", message);
+            throw(error);
+        }
+    });
+};
+
+var load_hashtags = function(start, stop) {
+    $("#pie").html('');
+
+    $.ajax({
+        url: '{{ elasticsearch_url }}/twitter/_search',
+        type: 'POST',
+        data: JSON.stringify({
+            "query": {
+                "constant_score": {
+                  "filter": {
+                    "range": {
+                      "created_at": {
+                        "from": start,
+                        "to": stop,
+                        "include_lower": false,
+                        "include_upper": false
+                      }
+                    }
+                  }
+                }
+            },
             "facets" : {
                 "hashtags" : {
                     "terms" : {
@@ -109,7 +204,12 @@ var load_hashtags = function() {
         dataType : 'json',
         processData: false,
         success: function(json, statusText, xhr) {
-           return display_chart(json);
+            console.log(json);
+            if (json.facets.hashtags.terms.length > 0)
+            {
+                display_chart(json.facets.hashtags.terms);
+                load_sample(json.facets.hashtags.terms, start, stop);
+            }
         },
         error: function(xhr, message, error) {
             console.error("Error while loading data from ElasticSearch", message);
@@ -117,8 +217,8 @@ var load_hashtags = function() {
         }
     });
 
-    var display_chart = function(json) {
-        var data = json.facets.hashtags.terms;
+    var display_chart = function(terms) {
+        var data = terms;
 
         var width = 400,
             height = 400,
@@ -158,25 +258,41 @@ var load_hashtags = function() {
     };
 };
 
-var load_timeline = function() {
+var load_timeline = function(start, stop) {
+    $("#timeline").html('');
+
     $.ajax({
         url: '{{ elasticsearch_url }}/twitter/_search',
         type: 'POST',
         data: JSON.stringify({
-            "query" : { "match_all" : {} },
-            "facets" : {
-                "created_at" : {
-                    "date_histogram" : {
-                        "field" : "created_at",
-                        "interval"  : "day"
-                    }
+          "query": {
+            "constant_score": {
+              "filter": {
+                "range": {
+                  "created_at": {
+                    "from": start,
+                    "to": stop,
+                    "include_lower": false,
+                    "include_upper": false
+                  }
                 }
+              }
             }
+          },
+          "facets": {
+            "created_at": {
+              "date_histogram": {
+                "field": "created_at",
+                "interval": "day"
+              }
+            }
+          }
         }),
         dataType : 'json',
         processData: false,
         success: function(json, statusText, xhr) {
-           return display_timeline(json.facets.created_at.entries);
+            if (json.facets.created_at.entries.length > 0)
+                return display_timeline(json.facets.created_at.entries);
         },
         error: function(xhr, message, error) {
             console.error("Error while loading data from ElasticSearch", message);
@@ -187,7 +303,7 @@ var load_timeline = function() {
     var display_timeline = function(data) {
         var margin = {top: 10, right: 10, bottom: 100, left: 40},
             margin2 = {top: 430, right: 10, bottom: 20, left: 40},
-            width = 960 - margin.left - margin.right,
+            width = 920 - margin.left - margin.right,
             height = 500 - margin.top - margin.bottom,
             height2 = 500 - margin2.top - margin2.bottom;
 
@@ -274,14 +390,14 @@ var load_timeline = function() {
 
         function brush() {
             x.domain(brush.empty() ? x2.domain() : brush.extent());
+            var extent = brush.extent();
+            $('#dp-start').datepicker('setValue', extent[0]);
+            $('#dp-stop').datepicker('setValue', extent[1]);
             focus.select("path").attr("d", area);
             focus.select(".x.axis").call(xAxis);
         }
     }
 };
-
-load_hashtags();
-load_timeline();
 
 var load_tweets = function(position) {
     console.log(position);
@@ -320,6 +436,16 @@ var load_tweets = function(position) {
         }
     });
 };
+
+$('#dp-start').datepicker();
+$('#dp-stop').datepicker();
+$('#timeline-update').click(function() {
+    var start = $("#dp-start").data('date').replace(/-/g, '/') + " 00:00:00";
+    var stop = $("#dp-stop").data('date').replace(/-/g, '/') + " 00:00:00";
+
+    load_hashtags(start, stop);
+    load_timeline(start, stop);
+});
     </script>
   {% endblock %}
 </div>
