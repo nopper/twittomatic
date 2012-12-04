@@ -1,5 +1,12 @@
 """
 Simple utility to deal with follower files.
+
+In general it is always better to do a two step approach:
+
+    $ find . -type f -name "*.fws" > follower-files
+    $ python ff-util.py --convert --list=follower-files
+    ...
+    $ find . -type f -name "*.fws.new" | while read FNAME; do mv -v "$FNAME" "${FNAME%.new}"; done
 """
 
 import sys
