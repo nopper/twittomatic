@@ -358,7 +358,18 @@ that we actually have a timeline job pending in the stream.
 ## Starting the worker
 
     $ PYTHONPATH=. python twitter/worker.py worker00
+    
+## Live monitoring
 
+You can connect with your browser to the monitor service and checkout what is going on under the hood:
+
+### Monitor page
+
+![Monitor page](http://i.imgur.com/KYGOg.png "Monitor page")
+
+### Inspector page
+
+![Inspector page](http://i.imgur.com/Ng0W3.png "Inspector page")
 
 ## Getting results
 
