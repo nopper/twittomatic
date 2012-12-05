@@ -3,7 +3,7 @@ import time
 import settings
 from crawler.master import *
 from twitter.const import *
-from twitter.job import TwitterJob
+from twitter.job import TwitterJob, Stats
 from twitter.modules.redislogger import RedisLogObserver
 
 import gzip
@@ -22,6 +22,10 @@ TRANSFORM_ANALYZER = 4
 from twitter.backend import *
 
 class TwitterJobTrackerFactory(JobTrackerFactory):
+    USERS_SEEDS    = settings.USERS_SEEDS
+    USERS_SELECTED = settings.USERS_SELECTED
+    FRONTIER_NAME  = settings.FRONTIER_NAME
+
     def __init__(self, *args, **kwargs):
         self.initialized = False
         self.options = kwargs.pop('options')
@@ -55,23 +59,26 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
             log.msg("No input file provided. Assuming the stream is already available")
 
         self.initializeStatistics({
-            'timeline.total_included': 0,
-            'timeline.total_fetched': 0,
-            'follower.total_fetched': 0,
-            'analyzer.total_included': 0,
-            'analyzer.total_fetched': 0,
-            'update.total_included': 0,
-            'update.total_fetched': 0,
+            Stats.TIMELINE_TOTAL_INCLUDED: 0,
+            Stats.TIMELINE_TOTAL_FETCHED: 0,
 
-            'stats.worker.ongoing.timeline': 0,
-            'stats.worker.ongoing.follower': 0,
-            'stats.worker.ongoing.analyzer': 0,
-            'stats.worker.ongoing.update': 0,
+            Stats.FOLLOWER_TOTAL_FETCHED: 0,
 
-            'stats.worker.completed.timeline': 0,
-            'stats.worker.completed.follower': 0,
-            'stats.worker.completed.analyzer': 0,
-            'stats.worker.completed.update': 0,
+            Stats.ANALYZER_TOTAL_INCLUDED: 0,
+            Stats.ANALYZER_TOTAL_FETCHED: 0,
+
+            Stats.UPDATE_TOTAL_INCLUDED: 0,
+            Stats.UPDATE_TOTAL_FETCHED: 0,
+
+            Stats.TIMELINE_ONGOING: 0,
+            Stats.FOLLOWER_ONGOING: 0,
+            Stats.ANALYZER_ONGOING: 0,
+            Stats.UPDATE_ONGOING: 0,
+
+            Stats.TIMELINE_COMPLETED: 0,
+            Stats.FOLLOWER_COMPLETED: 0,
+            Stats.ANALYZER_COMPLETED: 0,
+            Stats.UPDATE_COMPLETED: 0,
         })
 
     def recoverFromCrash(self):
@@ -83,13 +90,13 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
 
         with self.redis.pipeline() as pipe:
             try:
-                pipe.watch('ongoing:%d' % options.ha)
-                pipe.watch('master.refcount')
+                pipe.watch(self.STREAM % options.ha)
+                pipe.watch(self.MASTER_REFCOUNT)
 
                 log.msg("Checking if master with id %d left some works" % self.options.ha)
 
-                assigned_keys = self.redis.keys('assigned:%d:*' % self.options.ha)
-                assigned_jobs = pipe.smembers('ongoing:%d' % self.options.ha)
+                assigned_keys = self.redis.keys((self.ASSIGNED % self.options.ha) + ":*")
+                assigned_jobs = pipe.smembers(self.ONGOING % self.options.ha)
 
                 if assigned_keys:
                     values = set(pipe.mget(assigned_keys))
@@ -113,9 +120,9 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
 
                     for job in assigned_jobs:
                         log.msg("Reinserting %s in stream queue" % job)
-                        pipe.lpush('stream', job)
+                        pipe.lpush(self.STREAM, job)
 
-                    pipe.delete('ongoing:%d' % self.options.ha)
+                    pipe.delete(self.ONGOING % self.options.ha)
                     if assigned_keys:
                         pipe.delete(*assigned_keys)
 
@@ -124,11 +131,11 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
                         job = self.jobclass.deserialize(job)
                         counter[job.operation] += 1
 
-                    pipe.decr('master.refcount')
-                    pipe.decr('stats.worker.ongoing.timeline', counter[TwitterJob.TIMELINE_OP])
-                    pipe.decr('stats.worker.ongoing.follower', counter[TwitterJob.FOLLOWER_OP])
-                    pipe.decr('stats.worker.ongoing.analyzer', counter[TwitterJob.ANALYZER_OP])
-                    pipe.decr('stats.worker.ongoing.update', counter[TwitterJob.UPDATE_OP])
+                    pipe.decr(self.MASTER_REFCOUNT)
+                    pipe.decr(Stats.TIMELINE_ONGOING, counter[TwitterJob.TIMELINE_OP])
+                    pipe.decr(Stats.FOLLOWER_ONGOING, counter[TwitterJob.FOLLOWER_OP])
+                    pipe.decr(Stats.ANALYZER_ONGOING, counter[TwitterJob.ANALYZER_OP])
+                    pipe.decr(Stats.UPDATE_ONGOING, counter[TwitterJob.UPDATE_OP])
                     pipe.execute()
 
                     log.msg("%d jobs successfully recovered" % len(assigned_jobs))
@@ -154,24 +161,24 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
                 self.redis.set(k, v)
 
     def loadSeedsFrom(self, inputfile):
-        self.redis.delete(settings.USERS_SEEDS)
+        self.redis.delete(self.USERS_SEEDS)
 
         with open(inputfile, 'r') as input:
             for line in input:
                 if line.strip():
                     try:
                         user_id = int(line.strip())
-                        self.redis.sadd(settings.USERS_SEEDS, user_id)
+                        self.redis.sadd(self.USERS_SEEDS, user_id)
                     except:
                         pass
 
-        log.msg("Successfully loaded %d users into USER_SEEDS" % self.redis.scard(settings.USERS_SEEDS))
+        log.msg("Successfully loaded %d users into USER_SEEDS" % self.redis.scard(self.USERS_SEEDS))
 
     def loadTargetsFrom(self, targetfile, type):
         if not targetfile:
             return
 
-        stream_len = self.redis.llen('stream')
+        stream_len = self.redis.llen(self.STREAM)
 
         if stream_len and stream_len == 0:
             raise Exception("Trying to load users into stream while the stream is non-empty")
@@ -192,11 +199,11 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
                 if line.strip():
                     try:
                         user_id = int(line.strip())
-                        self.redis.lpush('stream', fmt % user_id)
+                        self.redis.lpush(self.STREAM, fmt % user_id)
                     except:
                         pass
 
-        log.msg("Successfully loaded %d users into stream" % self.redis.llen('stream'))
+        log.msg("Successfully loaded %d users into stream" % self.redis.llen(self.STREAM))
 
     def assignJobTo(self, client):
         type, job = JobTrackerFactory.assignJobTo(self, client)
@@ -206,13 +213,13 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
             deserialized = TwitterJob.deserialize(job)
 
             if deserialized.operation == TwitterJob.TIMELINE_OP:
-                self.redis.incr('stats.worker.ongoing.timeline')
+                self.redis.incr(Stats.TIMELINE_ONGOING)
             elif deserialized.operation == TwitterJob.FOLLOWER_OP:
-                self.redis.incr('stats.worker.ongoing.follower')
+                self.redis.incr(Stats.FOLLOWER_ONGOING)
             elif deserialized.operation == TwitterJob.ANALYZER_OP:
-                self.redis.incr('stats.worker.ongoing.analyzer')
+                self.redis.incr(Stats.ANALYZER_ONGOING)
             elif deserialized.operation == TwitterJob.UPDATE_OP:
-                self.redis.incr('stats.worker.ongoing.update')
+                self.redis.incr(Stats.UPDATE_ONGOING)
 
         return type, job
 
@@ -221,13 +228,13 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
             deserialized = TwitterJob.deserialize(self.assigned_jobs[client])
 
             if deserialized.operation == TwitterJob.TIMELINE_OP:
-                self.redis.decr('stats.worker.ongoing.timeline')
+                self.redis.decr(Stats.TIMELINE_ONGOING)
             elif deserialized.operation == TwitterJob.FOLLOWER_OP:
-                self.redis.decr('stats.worker.ongoing.follower')
+                self.redis.decr(Stats.FOLLOWER_ONGOING)
             elif deserialized.operation == TwitterJob.ANALYZER_OP:
-                self.redis.decr('stats.worker.ongoing.analyzer')
+                self.redis.decr(Stats.ANALYZER_ONGOING)
             elif deserialized.operation == TwitterJob.UPDATE_OP:
-                self.redis.decr('stats.worker.ongoing.update')
+                self.redis.decr(Stats.UPDATE_ONGOING)
 
         return JobTrackerFactory.manageLostClient(self, client)
 
@@ -240,19 +247,20 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
             ctstats, cfstats, castats, custats, \
             ftstats, ffstats, fastats, fupstats = map(lambda x: (x) and int(x) or 0,
                 self.redis.mget((
-                    'stats.worker.ongoing.timeline',
-                    'stats.worker.ongoing.follower',
-                    'stats.worker.ongoing.analyzer',
-                    'stats.worker.ongoing.update',
-                    'stats.worker.completed.timeline',
-                    'stats.worker.completed.follower',
-                    'stats.worker.completed.analyzer',
-                    'stats.worker.completed.update',
+                    Stats.TIMELINE_ONGOING,
+                    Stats.FOLLOWER_ONGOING,
+                    Stats.ANALYZER_ONGOING,
+                    Stats.UPDATE_ONGOING,
 
-                    'timeline.total_fetched',
-                    'follower.total_fetched',
-                    'analyzer.total_fetched',
-                    'update.total_fetched',
+                    Stats.TIMELINE_COMPLETED,
+                    Stats.FOLLOWER_COMPLETED,
+                    Stats.ANALYZER_COMPLETED,
+                    Stats.UPDATE_COMPLETED,
+
+                    Stats.TIMELINE_TOTAL_FETCHED,
+                    Stats.FOLLOWER_TOTAL_FETCHED,
+                    Stats.ANALYZER_TOTAL_FETCHED,
+                    Stats.UPDATE_TOTAL_FETCHED,
                 ))
             )
 
@@ -260,25 +268,6 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
                     (otstats, ofstats, oastats, oustats))
             log.msg("STATS: COMPLETED: Timeline: %d Follower: %d Analyzer: %d Update: %d" % \
                     (ctstats, cfstats, castats, custats))
-
-            self.redis.publish('stats.ops.active', json.dumps({
-                'time': time.time(),
-
-                'stats.worker.ongoing.timeline': otstats,
-                'stats.worker.ongoing.follower': ofstats,
-                'stats.worker.ongoing.analyzer': oastats,
-                'stats.worker.ongoing.update': oustats,
-
-                'stats.worker.completed.timeline': ctstats,
-                'stats.worker.completed.follower': cfstats,
-                'stats.worker.completed.analyzer': castats,
-                'stats.worker.completed.update': custats,
-
-                'stats.worker.timeline.total_fetched': ftstats,
-                'stats.worker.follower.total_fetched': ffstats,
-                'stats.worker.analyzer.total_fetched': fastats,
-                'stats.worker.update.total_fetched': fupstats,
-            }))
 
     def transformJob(self, result):
         # Actually this check is pretty useless. It will fall back to None anyway
@@ -318,40 +307,40 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
         now = time.time()
 
         if result.operation == result.TIMELINE_OP:
-            total_included = attributes.get('timeline.total_included', 0)
-            total_fetched = attributes.get('timeline.total_fetched', 0)
+            total_included = attributes.get(Stats.TIMELINE_TOTAL_INCLUDED, 0)
+            total_fetched = attributes.get(Stats.TIMELINE_TOTAL_FETCHED, 0)
 
             if total_included > 0:
-                self.redis.incr('timeline.total_included', total_included)
+                self.redis.incr(Stats.TIMELINE_TOTAL_INCLUDED, total_included)
             if total_fetched > 0:
-                self.redis.incr('timeline.total_fetched', total_fetched)
+                self.redis.incr(Stats.TIMELINE_TOTAL_FETCHED, total_fetched)
                 self.redis.publish('stats.ops.timeline.%s' % workername, json.dumps((total_fetched, now)))
 
         elif result.operation == result.FOLLOWER_OP:
-            total_fetched = attributes.get('follower.total_fetched', 0)
+            total_fetched = attributes.get(Stats.FOLLOWER_TOTAL_FETCHED, 0)
 
             if total_fetched > 0:
-                self.redis.incr('follower.total_fetched', total_fetched)
+                self.redis.incr(Stats.FOLLOWER_TOTAL_FETCHED, total_fetched)
                 self.redis.publish('stats.ops.follower.%s' % workername, json.dumps((total_fetched, now)))
 
         elif result.operation == result.ANALYZER_OP:
-            total_included = attributes.get('analyzer.total_included', 0)
-            total_fetched = attributes.get('analyzer.total_fetched', 0)
+            total_included = attributes.get(Stats.ANALYZER_TOTAL_INCLUDED, 0)
+            total_fetched = attributes.get(Stats.ANALYZER_TOTAL_FETCHED, 0)
 
             if total_included > 0:
-                self.redis.incr('analyzer.total_included', total_included)
+                self.redis.incr(Stats.ANALYZER_TOTAL_INCLUDED, total_included)
             if total_fetched > 0:
-                self.redis.incr('analyzer.total_fetched', total_fetched)
+                self.redis.incr(Stats.ANALYZER_TOTAL_FETCHED, total_fetched)
                 self.redis.publish('stats.ops.analyzer.%s' % workername, json.dumps((total_fetched, now)))
 
         elif result.operation == result.UPDATE_OP:
-            total_included = attributes.get('update.total_included', 0)
-            total_fetched = attributes.get('update.total_fetched', 0)
+            total_included = attributes.get(Stats.UPDATE_TOTAL_INCLUDED, 0)
+            total_fetched = attributes.get(Stats.UPDATE_TOTAL_FETCHED, 0)
 
             if total_included > 0:
-                self.redis.incr('update.total_included', total_included)
+                self.redis.incr(Stats.UPDATE_TOTAL_INCLUDED, total_included)
             if total_fetched > 0:
-                self.redis.incr('update.total_fetched', total_fetched)
+                self.redis.incr(Stats.UPDATE_TOTAL_FETCHED, total_fetched)
                 self.redis.publish('stats.ops.update.%s' % workername, json.dumps((total_fetched, now)))
 
     def notifyProgress(self, client, result, status, attributes):
@@ -361,21 +350,21 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
         ot, of, oa, ou = 0, 0, 0, 0
 
         if result.operation == TwitterJob.TIMELINE_OP:
-            ot = self.redis.decr('stats.worker.ongoing.timeline')
+            ot = self.redis.decr(Stats.TIMELINE_ONGOING)
             if status == STATUS_COMPLETED:
-                self.redis.incr('stats.worker.completed.timeline')
+                self.redis.incr(Stats.TIMELINE_COMPLETED)
         elif result.operation == TwitterJob.FOLLOWER_OP:
-            of = self.redis.decr('stats.worker.ongoing.follower')
+            of = self.redis.decr(Stats.FOLLOWER_ONGOING)
             if status == STATUS_COMPLETED:
-                self.redis.incr('stats.worker.completed.follower')
+                self.redis.incr(Stats.FOLLOWER_COMPLETED)
         elif result.operation == TwitterJob.ANALYZER_OP:
-            oa = self.redis.decr('stats.worker.ongoing.analyzer')
+            oa = self.redis.decr(Stats.ANALYZER_ONGOING)
             if status == STATUS_COMPLETED:
-                self.redis.incr('stats.worker.completed.analyzer')
+                self.redis.incr(Stats.ANALYZER_COMPLETED)
         elif result.operation == TwitterJob.UPDATE_OP:
-            ou = self.redis.decr('stats.worker.ongoing.update')
+            ou = self.redis.decr(Stats.UPDATE_ONGOING)
             if status == STATUS_COMPLETED:
-                self.redis.incr('stats.worker.completed.update')
+                self.redis.incr(Stats.UPDATE_COMPLETED)
 
         self.updateStatistics(self.getNickname(client), result, attributes, ot + 1, of + 1, oa + 1, ou + 1)
 
@@ -387,9 +376,9 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
                     newjob = TwitterJob(TwitterJob.TIMELINE_OP, int(target_user), 0)
 
                     #log.msg("Following %d friend => %d %s" % (result.user_id, int(target_user), str(newjob)))
-                    if not self.redis.sismember(settings.USERS_SELECTED, target_user):
-                        self.redis.rpush(settings.FRONTIER_NAME, TwitterJob.serialize(newjob))
-                        self.redis.sadd(settings.USERS_SELECTED, target_user)
+                    if not self.redis.sismember(self.USERS_SELECTED, target_user):
+                        self.redis.rpush(self.FRONTIER_NAME, TwitterJob.serialize(newjob))
+                        self.redis.sadd(self.USERS_SELECTED, target_user)
                         counter += 1
 
                 except Exception, exc:
@@ -424,8 +413,8 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
         if self.transformation & (TRANSFORM_ANALYZER):
             with NamedTemporaryFile(prefix='frontier-', suffix='.gz', delete=False) as container:
                 with gzip.GzipFile(mode='wb', fileobj=container) as gzdst:
-                    for i in xrange(self.redis.llen(settings.FRONTIER_NAME)):
-                        gzdst.write(self.redis.lindex(settings.FRONTIER_NAME, i) + '\n')
+                    for i in xrange(self.redis.llen(self.FRONTIER_NAME)):
+                        gzdst.write(self.redis.lindex(self.FRONTIER_NAME, i) + '\n')
 
                 log.msg("Frontier contents saved into %s" % container.name)
 

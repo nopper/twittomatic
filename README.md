@@ -252,10 +252,10 @@ This requires to have `python-cairo` package installed by your package manager.
     $ sudo python setup.py install
     $ cd ceres
     $ sudo python setup.py install
-    
+
     $ sudo pip install django
     $ sudo pip install django-tagging
-    
+
     $ cd carbon
     $ sudo python setup.py install
     $ cd graphite-web
@@ -316,7 +316,7 @@ You should be able to use graphite-web by pointing your browser to `http://0.0.0
 
 The lookup service:
 
-    $ PYTHONPATH=. python twitter/web/lookup.py 
+    $ PYTHONPATH=. python twitter/web/lookup.py
     Starting Lookup server on port http://localhost:9797
     ...
 
@@ -335,8 +335,7 @@ The monitor:
 
 The stats collector:
 
-    $ PYTHONPATH=. python twitter/web/stats.py -f /tmp/stats.gz --relay
-    Listening on stats.ops.* events
+    $ PYTHONPATH=. python twitter/web/stats.py -f /tmp/stats.gz
 
 ## Starting the master
 
@@ -358,7 +357,7 @@ that we actually have a timeline job pending in the stream.
 ## Starting the worker
 
     $ PYTHONPATH=. python twitter/worker.py worker00
-    
+
 ## Live monitoring
 
 You can connect with your browser to the monitor service and checkout what is going on under the hood:
@@ -400,9 +399,9 @@ lookup service:
     Server: gevent/0.13 Python/2.7
 
     {
-        "contributors_enabled": false, 
-        "created_at": "Thu Jul 24 22:31:12 +0000 2008", 
-        "default_profile": false, 
-        "default_profile_image": false, 
+        "contributors_enabled": false,
+        "created_at": "Thu Jul 24 22:31:12 +0000 2008",
+        "default_profile": false,
+        "default_profile_image": false,
         "description": "CSO of Rapid7 and Chief Architect of Metasploit",
     ...

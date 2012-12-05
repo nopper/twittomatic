@@ -1,89 +1,125 @@
-"""
-A simple client that keep tracks of Operations/s
+import gevent
 
-A possibility consists in sending out the series to a graphite instance
-"""
+from gevent import monkey
+monkey.patch_socket()
 
-import sys
-import json
+import time
 import gzip
-import socket
 import redis
+import signal
+
+from gevent import socket
+
+from twitter.job import Stats
 from twitter.settings import CARBON_SERVER, CARBON_PORT
 
-class GraphiteRelayer(object):
-    def __init__(self):
-        self.sock = socket.socket()
-        self.sock.connect((CARBON_SERVER, CARBON_PORT))
+r = redis.StrictRedis()
+output = None
+event_counter = 0
 
-    def relay(self, message):
+sock = socket.socket()
+sock.connect((CARBON_SERVER, CARBON_PORT))
+
+MONITORED_VALUES = [
+    Stats.TIMELINE_TOTAL_INCLUDED,
+    Stats.TIMELINE_TOTAL_FETCHED,
+
+    Stats.FOLLOWER_TOTAL_FETCHED,
+
+    Stats.ANALYZER_TOTAL_INCLUDED,
+    Stats.ANALYZER_TOTAL_FETCHED,
+
+    Stats.UPDATE_TOTAL_INCLUDED,
+    Stats.UPDATE_TOTAL_FETCHED,
+
+    Stats.TIMELINE_ONGOING,
+    Stats.FOLLOWER_ONGOING,
+    Stats.ANALYZER_ONGOING,
+    Stats.UPDATE_ONGOING,
+
+    Stats.TIMELINE_COMPLETED,
+    Stats.FOLLOWER_COMPLETED,
+    Stats.ANALYZER_COMPLETED,
+    Stats.UPDATE_COMPLETED,
+]
+
+def stats_polling():
+    global event_counter
+
+    while True:
+        now = time.time()
+        values = r.mget(MONITORED_VALUES)
+
         lines = []
+        ts = int(now)
 
-        if message['channel'] == 'stats.ops.active':
-            data = json.loads(message['data'])
+        for label, value in zip(MONITORED_VALUES, values):
+            try:
+                value = int(value)
+            except:
+                value = 0
 
-            now = int(data.pop('time'))
+            lines.append("%s %d %d" % (label, value, ts))
+            event_counter += 1
 
-            for key, value in data.items():
-                lines.append("%s %d %d" % (key, value, now))
+            if event_counter % 100 == 0:
+                print "Events collected %d" % event_counter
 
-            msg = '\n'.join(lines) + '\n'
-            self.sock.sendall(msg)
+        msg = '\n'.join(lines) + '\n'
 
-        elif message['channel'].startswith('stats.ops.'):
-            data = json.loads(message['data'])
-            msg = "%s %d %d\n" % (message['channel'], data[0], data[1])
-            self.sock.sendall(msg)
+        sock.send(msg)
+        output.write(msg)
 
-class TimeSeriesCollector(object):
-    def __init__(self, filename, is_relayer):
-        self.redis = redis.Redis()
+        gevent.sleep(abs(time.time() - (now + 1)))
 
-        if is_relayer:
-            self.relayer = GraphiteRelayer()
-        else:
-            self.relayer = None
+def parse_message(message):
+    if message['type'] == 'pmessage':
+        parsed = {
+            'channel': message['channel'],
+            'data': message['data']
+        }
+        return parsed
 
-        self.filename = filename
-        self.output = gzip.open(self.filename, 'w')
+def stats_receiver():
+    global event_counter
 
-    def run(self):
-        try:
-            pubsub = self.redis.pubsub()
-            pubsub.psubscribe('stats.ops.*')
+    pubsub = r.pubsub()
+    pubsub.psubscribe('stats.ops.*')
 
-            print "Listening on stats.ops.* events"
+    print "Listening on stats.ops.* events"
 
-            for message in pubsub.listen():
-                parsed = self.parse_message(message)
+    for message in pubsub.listen():
+        msg = parse_message(message)
 
-                if parsed and self.relayer:
-                    self.relayer.relay(parsed)
-        finally:
-            self.output.close()
+        if msg:
+            data = json.loads(msg['data'])
+            msg = "%s %d %d\n" % (msg['channel'], data[0], data[1])
+            sock.sendall(msg)
+            output.write(msg)
 
-    def parse_message(self, message):
-        if message['type'] == 'pmessage':
-            print message['channel']
-            parsed = {
-                'channel': message['channel'],
-                'data': message['data']
-            }
-            self.output.write(json.dumps(parsed) + '\n')
-            return parsed
+            event_counter += 1
 
 if __name__ == "__main__":
     from optparse import OptionParser
 
     parser = OptionParser()
-    parser.add_option("--relay", action="store_true", dest="is_relayer",
-                      help="Relay all the message received to a Graphite server")
     parser.add_option("-f", "--file", dest="file",
                       help="File from which or to which store statistics")
 
     (options, args) = parser.parse_args()
 
     if options.file:
-        TimeSeriesCollector(options.file, options.is_relayer).run()
+        output = gzip.open(options.file, 'w')
+
+        def close_file():
+            output.close()
+
+        gevent.signal(signal.SIGTERM, close_file)
+        gevent.signal(signal.SIGINT, close_file)
+
+        gevent.joinall([
+            gevent.spawn(stats_polling),
+            gevent.spawn(stats_receiver),
+        ])
     else:
         parser.print_help()

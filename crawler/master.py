@@ -109,6 +109,13 @@ class JobTrackerProtocol(LineReceiver):
 class JobTrackerFactory(ServerFactory):
     protocol = JobTrackerProtocol
 
+    MASTER_REFCOUNT = 'master.refcount'
+    STREAM = 'stream'
+    ERROR_STREAM = 'error_stream'
+    ONGOING = 'ongoing:%d'
+    ASSIGNED = 'assigned:%s'
+
+
     def __init__(self, redis, jobclass, clients_max=100):
         """
         @param redis a redis instance
@@ -134,13 +141,13 @@ class JobTrackerFactory(ServerFactory):
         self.periodic_summary = task.LoopingCall(self.summary)
         self.periodic_summary.start(5)
 
-        servers = self.redis.get('master.refcount')
+        servers = self.redis.get(self.MASTER_REFCOUNT)
 
         if servers is not None or servers > 0:
             self.recoverFromCrash()
-            self.redis.set('master.refcount', 0)
+            self.redis.set(self.MASTER_REFCOUNT, 0)
 
-        self.redis.incr('master.refcount')
+        self.redis.incr(self.MASTER_REFCOUNT)
 
     def mkhash(self, client_ip):
         return '%d:%s:%d' % (self.master_id, client_ip.host, client_ip.port)
@@ -159,9 +166,9 @@ class JobTrackerFactory(ServerFactory):
         log.msg("A crash condition was detected. You need to implement recoverFromCrash()")
 
     def summary(self):
-        num_items = self.redis.llen('stream')
+        num_items = self.redis.llen(self.STREAM)
         num_workers = len(self.clients)
-        active_workers = self.redis.scard('ongoing:%d' % self.master_id)
+        active_workers = self.redis.scard(self.ONGOING % self.master_id)
 
         if num_workers == 0:
             active_percentage = 'N/A'
@@ -174,8 +181,8 @@ class JobTrackerFactory(ServerFactory):
 
     def finished(self):
         "@return True if we have successfully completed parsing the stream"
-        items_left = self.redis.llen('stream')
-        items_ongoing = self.redis.scard('ongoing:%d' % self.master_id)
+        items_left = self.redis.llen(self.STREAM)
+        items_ongoing = self.redis.scard(self.ONGOING % self.master_id)
 
         log.msg("Items left: %d Items ongoing: %d" % (items_left, items_ongoing))
         #log.msg("Contents: %s" % str(self.redis._db))
@@ -194,7 +201,7 @@ class JobTrackerFactory(ServerFactory):
         """
         assert self.clients[client] == WORKER_IDLE
 
-        job = self.redis.lindex('stream', 0)
+        job = self.redis.lindex(self.STREAM, 0)
 
         if job is None:
             if self.finished():
@@ -208,9 +215,9 @@ class JobTrackerFactory(ServerFactory):
             #START/TRANS#
             pipe = self.redis.pipeline()
             pipe.multi()
-            pipe.lpop('stream')
-            pipe.set('assigned:%s' % client, job)
-            pipe.sadd('ongoing:%d' % self.master_id, job)
+            pipe.lpop(self.STREAM)
+            pipe.set(self.ASSIGNED % client, job)
+            pipe.sadd(self.ONGOING % self.master_id, job)
             pipe.execute()
             #END/TRANS#
 
@@ -229,9 +236,9 @@ class JobTrackerFactory(ServerFactory):
             #START/TRANS#
             pipe = self.redis.pipeline()
             pipe.multi()
-            pipe.lpush('stream', job)
-            pipe.delete('assigned:%s' % client)
-            pipe.srem('ongoing:%d' % self.master_id, job)
+            pipe.lpush(self.STREAM, job)
+            pipe.delete(self.ASSIGNED % client)
+            pipe.srem(self.ONGOING % self.master_id, job)
             pipe.execute()
             #END/TRANS#
 
@@ -272,12 +279,12 @@ class JobTrackerFactory(ServerFactory):
 
         if ret is not None:
             if process_next:
-                pipe.lpush('stream', serialized_result)
+                pipe.lpush(self.STREAM, serialized_result)
             else:
-                pipe.rpush('stream', serialized_result)
+                pipe.rpush(self.STREAM, serialized_result)
 
-        pipe.delete('assigned:%s' % client)
-        pipe.srem('ongoing:%d' % self.master_id, prev_job)
+        pipe.delete(self.ASSIGNED % client)
+        pipe.srem(self.ONGOING % self.master_id, prev_job)
         pipe.execute()
         #END/TRANS#
 
@@ -292,10 +299,10 @@ class JobTrackerFactory(ServerFactory):
         pipe.multi()
 
         if self.needsReinsertion(client, result, status):
-            pipe.lpush('stream', serialized_result)
+            pipe.lpush(self.STREAM, serialized_result)
 
-        pipe.delete('assigned:%s' % client)
-        pipe.srem('ongoing:%d' % self.master_id, prev_job)
+        pipe.delete(self.ASSIGNED % client)
+        pipe.srem(self.ONGOING % self.master_id, prev_job)
         pipe.execute()
         #END/TRANS#
 
@@ -304,7 +311,7 @@ class JobTrackerFactory(ServerFactory):
         return self.assigned_jobs.get(client, None)
 
     def handleFailingJob(self, serialized_job):
-        self.redis.rpush('error_stream', serialized_job)
+        self.redis.rpush(self.ERROR_STREAM, serialized_job)
 
     def needsReinsertion(self, client, result, status):
         return True
