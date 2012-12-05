@@ -19,6 +19,7 @@ def analyze_followers(reader, start_cursor=0, already_processed=lambda x: False,
     batch = []
     lookup_infos = []
     current_cursor = start_cursor
+    dedup = set()
 
     while True:
         consumed = False
@@ -27,8 +28,9 @@ def analyze_followers(reader, start_cursor=0, already_processed=lambda x: False,
             follower_id = reader[start_cursor]
             start_cursor += 1
 
-            if not already_processed(follower_id):
+            if follower_id not in dedup and not already_processed(follower_id):
                 batch.append(follower_id)
+                dedup.add(follower_id)
 
         users = ','.join(map(str, batch))
         payload = {
@@ -40,6 +42,7 @@ def analyze_followers(reader, start_cursor=0, already_processed=lambda x: False,
         if len(batch) == 0:
             msg = MSG_OK
             consumed = True
+            collection = []
         else:
             try:
                 count += 1
@@ -64,6 +67,8 @@ def analyze_followers(reader, start_cursor=0, already_processed=lambda x: False,
 
         if consumed:
             return (msg, lookup_infos, sleep_time, current_cursor)
+
+        batch = []
 
 def analyze_followers_of(user_id, start_cursor=0,
                          already_processed=lambda x: False,
