@@ -7,7 +7,7 @@ from twitter.job import TwitterJob
 from twitter.modules import TwitterResponse, fileutils, exports
 
 from twisted.internet import threads
-from twisted.python import log
+from twisted.python import log, failure
 from twisted.python.logfile import DailyLogFile
 
 class TwitterTrackerClient(JobTrackerClient):
@@ -68,7 +68,8 @@ class TwitterTrackerClient(JobTrackerClient):
 
         # Because lambdas are funny
         if lambda_fun is None:
-            raise Exception("I don't know how to exucute job %s" % str(job))
+            reason = failure.Failure("I don't know how to exucute job %s" % str(job), Exception)
+            return self.onJobFailed(reason)
 
         # Let's also mark the execution so we can commit suicide easily in case
         # the connection with the master is lost
@@ -90,13 +91,16 @@ class TwitterTrackerClient(JobTrackerClient):
         log.msg("Internal thread raised an exception:")
         reason.printDetailedTraceback()
 
-        self.quit()
+        log.msg("Sending error message and exiting")
+        self.notifyMaster(STATUS_ERROR, self.current_job, {})
+        self.transport.loseConnection()
 
     def onJobReturned(self, response):
         self.factory.thread_working = False
 
         if not isinstance(response, TwitterResponse):
-            raise Exception("I was expecting a TwitterResponse object. Got %s" % str(response))
+            reason = failure.Failure(Exception("I was expecting a TwitterResponse object. Got %s" % str(response)), Exception)
+            return self.onJobFailed(reason)
 
         log.msg("Twitter job executed. Response is %s" % str(response))
 
@@ -114,7 +118,8 @@ class TwitterTrackerClient(JobTrackerClient):
         elif response.status in (STATUS_UNAUTHORIZED, STATUS_ERROR):
             return self.onJobCompleted(response.status, job, response.attributes)
 
-        raise Exception("Unknown status %d. Don't know how to proceed" % response.status)
+        reason = failure.Failure(Exception("Unknown status %d. Don't know how to proceed" % response.status), Exception)
+        return self.onJobFailed(reason)
 
 class TwitterTrackerClientFactory(JobTrackerClientFactory):
     protocol = TwitterTrackerClient

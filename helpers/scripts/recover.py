@@ -21,7 +21,7 @@ def recover(dirname, filename):
                     timeline[int(tweet['id_str'])] = tweet
                 except:
                     continue
-        except IOError:
+        except:
             print "File %s is corrupted" % filename
 
     with NamedTemporaryFile(prefix='recover-',
