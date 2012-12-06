@@ -2,6 +2,9 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /*
  * Here we have several .twt file to merge. The scheme is simple:
@@ -11,25 +14,23 @@ import java.util.*;
 class Merger {
 
     private LinkedList<Long> inputFiles;
-    private LinkedList<File> mergeFiles;
+    private ConcurrentLinkedQueue<File> mergeFiles;
 
     private String inputPath;
-    private int maxFiles;
 
     public static void main(String [] args) throws Exception {
-    if (args.length != 2) {
-        System.out.println("Usage: Merger <inputpath> <maxfiles>");
-        System.out.println("       It will create files inside merge/ directory");
-    }
-    else
-        new Merger(args[0], Integer.parseInt(args[1]));
+        if (args.length != 4) {
+            System.out.println("Usage: Merger <inputpath> <outputpath> <maxfiles> <maxthreads>");
+            System.out.println("       It will create files inside <outputpath>/ directory");
+        }
+        else
+            new Merger(args[0], args[1], Integer.parseInt(args[2]), Integer.parseInt(args[3]));
     }
 
-    public Merger(String inputPath, int maxFiles) throws Exception {
+    public Merger(String inputPath, String outputPath, int maxFiles, int maxThreads) throws Exception {
         this.inputPath = inputPath;
-        this.maxFiles = maxFiles;
 
-        mergeFiles = new LinkedList<File>();
+        mergeFiles = new ConcurrentLinkedQueue<File>();
 
         inputFiles = getUsers();
 
@@ -40,46 +41,67 @@ class Merger {
         Round round;
 
         System.out.println("Reducing " + inputFiles.size() + " files. Levels: " + maxLevels);
+        ExecutorService executorService = Executors.newFixedThreadPool(maxThreads);
 
         // Last level merge
         while (inputFiles.size() > 0) {
             counter = maxFiles;
-            round = new Round(inputPath, roundId++);
+            round = new Round(inputPath, outputPath, roundId++);
 
             while (counter > 0 && !inputFiles.isEmpty()) {
                 if (round.addUser(inputFiles.pop()))
                     counter -= 1;
             }
 
-            if (inputFiles.isEmpty() && mergeFiles.isEmpty())
-                mergeFiles.add(round.merge(false, true));
-            else
-                mergeFiles.add(round.merge(false, false));
+            boolean canDestroy = false;
+            boolean isLast = (inputFiles.isEmpty() && mergeFiles.isEmpty());
+
+            RoundConsumer consumer = new RoundConsumer(round, canDestroy, isLast, mergeFiles);
+            executorService.execute(consumer);
+        }
+
+        executorService.shutdown();
+
+        while (!executorService.isTerminated())
+        {
+            System.out.println("Waiting for threads termination. Files " + mergeFiles.size());
+            Thread.sleep(1000);
         }
 
         curLevel = 1;
-        LinkedList<File> tmpMergeFiles = new LinkedList<File>();
+        ConcurrentLinkedQueue<File> tmpMergeFiles = new ConcurrentLinkedQueue<File>();
 
         while (mergeFiles.size() > 1) {
             System.out.println("Level: " + curLevel + " maxLevels: " + maxLevels);
+            executorService = Executors.newFixedThreadPool(maxThreads);
 
             while (mergeFiles.size() > 0) {
                 counter = maxFiles;
-                round = new Round(inputPath, roundId++);
+                round = new Round(inputPath, outputPath, roundId++);
 
                 while (counter > 0 && !mergeFiles.isEmpty()) {
-                    if (round.addFile(mergeFiles.pop()))
+                    if (round.addFile(mergeFiles.poll()))
                         counter -= 1;
                 }
 
-                if (mergeFiles.isEmpty() && tmpMergeFiles.isEmpty())
-                    tmpMergeFiles.add(round.merge(true, true));
-                else
-                    tmpMergeFiles.add(round.merge(true, false));
+                boolean canDestroy = true;
+                boolean isLast = (mergeFiles.isEmpty() && tmpMergeFiles.isEmpty());
+
+                RoundConsumer consumer = new RoundConsumer(round, canDestroy, isLast, tmpMergeFiles);
+                executorService.execute(consumer);
             }
 
+            executorService.shutdown();
+
+            while (!executorService.isTerminated())
+            {
+                System.out.println("Waiting for threads termination. Files " + mergeFiles.size());
+                Thread.sleep(1000);
+            }
+
+            // At this point we are single threaded
             mergeFiles = tmpMergeFiles;
-            tmpMergeFiles = new LinkedList<File>();
+            tmpMergeFiles = new ConcurrentLinkedQueue<File>();
 
             curLevel += 1;
         }

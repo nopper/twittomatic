@@ -15,7 +15,7 @@ public class Find extends SimpleFileVisitor<Path> {
     }
 
     void find(Path file) {
-    Path name = file.getFileName();
+        Path name = file.getFileName();
         if (name != null && matcher.matches(name)) {
             String fname = name.toString();
             getUsers().add(Long.parseLong(fname.substring(0, fname.length() - 4)));

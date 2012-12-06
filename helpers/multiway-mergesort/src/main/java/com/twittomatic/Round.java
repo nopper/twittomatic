@@ -17,15 +17,17 @@ public class Round {
     private PriorityQueue<TweetReader> queue;
     private int roundId;
     private String inputPath;
+    private String outputPath;
 
-    public Round(String inputPath, int id) {
-    this.inputPath = inputPath;
+    public Round(String inputPath, String outputPath, int id) {
+        this.inputPath = inputPath;
+        this.outputPath = outputPath;
         this.roundId = id;
         this.queue = new PriorityQueue<TweetReader>();
     }
 
     private File simpleMerge(boolean canDestroy) throws IOException {
-        File file = File.createTempFile("round-", "-" + roundId, new File("merge"));
+        File file = File.createTempFile("round-", "-" + roundId, new File(outputPath));
         BufferedOutputStream out = new BufferedOutputStream(new GZIPOutputStream(new FileOutputStream(file)));
 
         System.out.println("Merging round: " + roundId + " Files: " + queue.size() + " Ouput: " + file.getName());
@@ -46,10 +48,10 @@ public class Round {
         if (!isLast)
             return simpleMerge(canDestroy);
 
-        File jsonFile = File.createTempFile("timeline-full-json-", "-" + roundId, new File("merge"));
+        File jsonFile = File.createTempFile("timeline-full-json-", "-" + roundId, new File(outputPath));
         BufferedOutputStream jsonOut = new BufferedOutputStream(new GZIPOutputStream(new FileOutputStream(jsonFile)));
 
-        File txtFile = File.createTempFile("timeline-full-txt-", "-" + roundId, new File("merge"));
+        File txtFile = File.createTempFile("timeline-full-txt-", "-" + roundId, new File(outputPath));
         BufferedOutputStream txtOut = new BufferedOutputStream(new GZIPOutputStream(new FileOutputStream(txtFile)));
 
         System.out.println("Final round: " + roundId + " Files: " + queue.size());
