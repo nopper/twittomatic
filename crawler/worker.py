@@ -62,7 +62,7 @@ class JobTrackerClient(LineReceiver):
 
     def executeJob(self, job):
         # Usually you actually run the job get the result and call the onJobCompleted callback
-        # status, result, attrs = 
+        # status, result, attrs =
         raise Exception("Not implemented")
 
     def onJobCompleted(self, status, result, attrs):
@@ -89,10 +89,11 @@ class JobTrackerClient(LineReceiver):
         if self.sleep_time > 0:
             log.msg("Sleeping %d seconds before requesting a new job" % self.sleep_time)
 
-        d = task.deferLater(reactor, self.sleep_time,
-            lambda: self.serialize({'type': 'request'}) + '\r\n'
-        )
-        d.addCallback(self.transport.write)
+        d = task.deferLater(reactor, self.sleep_time, self.wakeUp)
+
+    def wakeUp(self, *args):
+        self.sleep_time = 0
+        self.transport.write(self.serialize({'type': 'request'}) + '\r\n')
 
     def quit(self):
         self.factory.quit()

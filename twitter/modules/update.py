@@ -37,7 +37,7 @@ def update_timeline(user_id, must_include=lambda x: True):
         # Let's treat this as not found user
         return TwitterResponse(STATUS_UNAUTHORIZED, user_id, 0, 0)
 
-    msg, timeline, sleep_time = fetch_timeline(user_id, since_id=since_id)
+    msg, timeline, sleep_time = fetch_timeline(user_id=user_id, since_id=since_id)
 
     if len(timeline) > 0 and msg == MSG_OK:
         # Here we need to create a new file containing the delta timeline
