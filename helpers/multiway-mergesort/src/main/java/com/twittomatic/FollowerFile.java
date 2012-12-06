@@ -3,28 +3,28 @@ import java.util.HashSet;
 
 
 public class FollowerFile {
-	private long userId;
-	private BufferedWriter writer;
-	private HashSet<Long> followers;
-	
-	public FollowerFile(long userId) {
-		this.userId = userId;
-		this.followers = new HashSet<Long>();
-	}
+    private long userId;
+    private BufferedWriter writer;
+    private HashSet<Long> followers;
 
-	public HashSet<Long> getFollowers() {
-		return followers;
-	}
+    public FollowerFile(long userId) {
+        this.userId = userId;
+        this.followers = new HashSet<Long>();
+    }
 
-	public BufferedWriter getWriter() {
-		return writer;
-	}
+    public HashSet<Long> getFollowers() {
+        return followers;
+    }
 
-	public void setWriter(BufferedWriter writer) {
-		this.writer = writer;
-	}
+    public BufferedWriter getWriter() {
+        return writer;
+    }
 
-	public long getUserId() {
-		return userId;
-	}
+    public void setWriter(BufferedWriter writer) {
+        this.writer = writer;
+    }
+
+    public long getUserId() {
+        return userId;
+    }
 }
