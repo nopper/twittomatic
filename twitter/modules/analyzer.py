@@ -126,7 +126,7 @@ if __name__ == "__main__":
     parser.add_option("-f", "--file", dest="filename",
                       help="followers file of the target user", metavar="FILE")
     parser.add_option("-e", "--expression", dest="expression", default="id_str,screen_name",
-                  help="print out only a specific portion of the JSON (default: id_str,screen_name)")
+                      help="print out only a specific portion of the JSON (default: id_str,screen_name)")
 
     (options, args) = parser.parse_args()
 

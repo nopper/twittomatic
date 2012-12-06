@@ -4,7 +4,7 @@ from crawler.worker import *
 from twitter.const import *
 from twitter import settings
 from twitter.job import TwitterJob
-from twitter.modules import TwitterResponse, fileutils, exports
+from twitter.modules import TwitterResponse, fileutils, exports, decorators
 
 from twisted.internet import threads
 from twisted.python import log, failure
@@ -25,6 +25,10 @@ class TwitterTrackerClient(JobTrackerClient):
 
         if not interesting:
             self.factory.redis.sadd(settings.USERS_DISCARDED, user['id_str'])
+
+        # Save for future proofing
+        user_id = int(user['id_str'])
+        self.factory.alreadyProcessed.cache_key(True, user_id)
 
         return interesting
 
@@ -130,6 +134,7 @@ class TwitterTrackerClientFactory(JobTrackerClientFactory):
         self.thread_working = False
         self.redis = settings.REDIS_CLASS()
 
+    @decorators.lru_cache(maxsize=2 ** 12)
     def alreadyProcessed(self, user_id):
         return self.redis.sismember(settings.USERS_SEEDS, user_id) or \
                self.redis.sismember(settings.USERS_DISCARDED, user_id) or \
