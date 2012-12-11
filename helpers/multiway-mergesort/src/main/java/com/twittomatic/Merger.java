@@ -40,6 +40,8 @@ class Merger {
         int roundId = 0;
         Round round;
 
+        ArrayList<Round> rounds = new ArrayList<Round>();
+
         System.out.println("Reducing " + inputFiles.size() + " files. Levels: " + maxLevels);
         ExecutorService executorService = Executors.newFixedThreadPool(maxThreads);
 
@@ -53,13 +55,18 @@ class Merger {
                     counter -= 1;
             }
 
-            boolean canDestroy = false;
-            boolean isLast = (inputFiles.isEmpty() && mergeFiles.isEmpty());
+            rounds.add(round);
+        }
 
-            RoundConsumer consumer = new RoundConsumer(round, canDestroy, isLast, mergeFiles);
+        for (Round iter: rounds) {
+            boolean canDestroy = false;
+            boolean isLast = (rounds.size() == 1);
+
+            RoundConsumer consumer = new RoundConsumer(iter, canDestroy, isLast, mergeFiles);
             executorService.execute(consumer);
         }
 
+        rounds.clear();
         executorService.shutdown();
 
         while (!executorService.isTerminated())
@@ -84,18 +91,23 @@ class Merger {
                         counter -= 1;
                 }
 
-                boolean canDestroy = true;
-                boolean isLast = (mergeFiles.isEmpty() && tmpMergeFiles.isEmpty());
+                rounds.add(round);
+            }
 
-                RoundConsumer consumer = new RoundConsumer(round, canDestroy, isLast, tmpMergeFiles);
+            for (Round iter: rounds) {
+                boolean canDestroy = true;
+                boolean isLast = (rounds.size() == 1);
+
+                RoundConsumer consumer = new RoundConsumer(iter, canDestroy, isLast, tmpMergeFiles);
                 executorService.execute(consumer);
             }
 
+            rounds.clear();
             executorService.shutdown();
 
             while (!executorService.isTerminated())
             {
-                System.out.println("Waiting for threads termination. Files " + mergeFiles.size());
+                System.out.println("Waiting for threads termination. Files " + tmpMergeFiles.size());
                 Thread.sleep(1000);
             }
 

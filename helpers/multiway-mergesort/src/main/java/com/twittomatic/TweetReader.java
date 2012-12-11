@@ -54,11 +54,11 @@ public class TweetReader implements Comparable<TweetReader> {
         } catch (Exception e) {
         }
 
-    if (canDestroy) {
-      // System.out.println("Deleting " + file + ".. what a joke");
-      file.delete();
+        if (canDestroy) {
+          // System.out.println("Deleting " + file + ".. what a joke");
+          file.delete();
+        }
     }
-  }
 
     @SuppressWarnings("rawtypes")
     public boolean advance(boolean canDestroy) {

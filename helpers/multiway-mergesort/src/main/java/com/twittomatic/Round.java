@@ -8,6 +8,7 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.PriorityQueue;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -18,12 +19,23 @@ public class Round {
     private int roundId;
     private String inputPath;
     private String outputPath;
+    private ArrayList<Long> inputUsers;
 
     public Round(String inputPath, String outputPath, int id) {
         this.inputPath = inputPath;
         this.outputPath = outputPath;
         this.roundId = id;
         this.queue = new PriorityQueue<TweetReader>();
+        this.inputUsers = new ArrayList<Long>();
+    }
+
+    private void readUsers() {
+        for (Long user: inputUsers) {
+            String strUser = Long.toString(user);
+            addStream(new File(this.inputPath + "/" + strUser.substring(0, 2), strUser + ".twt"));
+        }
+
+        inputUsers.clear();
     }
 
     private File simpleMerge(boolean canDestroy) throws IOException {
@@ -45,6 +57,8 @@ public class Round {
     }
 
     public File merge(boolean canDestroy, boolean isLast) throws IOException {
+        readUsers();
+
         if (!isLast)
             return simpleMerge(canDestroy);
 
@@ -124,7 +138,7 @@ public class Round {
     }
 
     public boolean addUser(long user) {
-        String strUser = Long.toString(user);
-        return addStream(new File(this.inputPath + "/" + strUser.substring(0, 2), strUser + ".twt"));
+        inputUsers.add(user);
+        return true;
     }
 }
