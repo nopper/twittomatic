@@ -90,7 +90,7 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
 
         with self.redis.pipeline() as pipe:
             try:
-                pipe.watch(self.STREAM % options.ha)
+                pipe.watch(self.ONGOING % options.ha)
                 pipe.watch(self.MASTER_REFCOUNT)
 
                 log.msg("Checking if master with id %d left some works" % self.options.ha)
