@@ -23,14 +23,24 @@ import time
 import struct
 
 def load_tweets(ds, user_id, filename):
-    with gzip.open(filename, 'r') as input:
+    if filename.endswith('.gz'):
+        opener = gzip.open
+    else:
+        opener = open
+
+    with opener(filename, 'r') as input:
         data = input.readlines()
         ds[user_id] = data
 
 def load_followers(ds, user_id, filename):
     followers = []
 
-    with gzip.open(filename, 'r') as input:
+    if filename.endswith('.gz'):
+        opener = gzip.open
+    else:
+        opener = open
+
+    with opener(filename, 'r') as input:
         while True:
             data = input.read(struct.calcsize("!Q"))
 
@@ -53,9 +63,9 @@ def load_dataset_from(directory):
         except:
             continue
 
-        if filename.endswith('.twt'):
+        if filename.endswith('.twt') or filename.endswith('twt.gz'): 
             load_tweets(dataset_timeline, user_id, filename)
-        elif filename.endswith('.fws'):
+        elif filename.endswith('.fws') or filename.endswith('twt.gz'):
             load_followers(dataset_followers, user_id, filename)
 
     print "Dataset successfully loaded. %d files loaded." % count
