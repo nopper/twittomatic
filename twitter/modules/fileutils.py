@@ -80,6 +80,9 @@ def commit_file_compressed(srcfile, user_id, extension):
             os.rename(srcfile.name, dstfilename)
 
 def commit_file(srcfile, user_id, extension):
+    if USE_COMPRESSION:
+        extension += '.gz'
+
     # We need to copy the file contents to the original location
     compfile = NamedTemporaryFile(prefix='twitter-', dir=TEMPORARY_DIRECTORY, delete=False)
 
@@ -95,6 +98,9 @@ def commit_file(srcfile, user_id, extension):
     commit_file_compressed(compfile, user_id, extension)
 
 def download(user_id, extension):
+    if USE_COMPRESSION:
+        extension += '.gz'
+
     with profiled("Downloading local copy in %s"):
         dstfile = TemporaryFile(prefix='twitter-', suffix='.' + extension)
         srcfilename = get_filename(user_id, extension, create=False, hdfs_dest=USE_HDFS)
