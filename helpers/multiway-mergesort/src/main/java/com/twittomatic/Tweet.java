@@ -1,8 +1,9 @@
+import java.math.BigInteger;
 
 public class Tweet implements Comparable<Tweet> {
     private long time;
-    private long tid;
-    private long userId;
+    private BigInteger tid;
+    private BigInteger userId;
     private String line;
     private String geo;
     private String text;
@@ -13,7 +14,7 @@ public class Tweet implements Comparable<Tweet> {
 //      this.setTid(tid);
 //  }
 
-    public Tweet(String line, long time, long tid, long userId, String geo, String text) {
+    public Tweet(String line, long time, BigInteger tid, BigInteger userId, String geo, String text) {
         this.userId = userId;
         this.setLine(line);
         this.setTime(time);
@@ -50,7 +51,7 @@ public class Tweet implements Comparable<Tweet> {
         return time;
     }
 
-    public long getUserId() {
+    public BigInteger getUserId() {
         return userId;
     }
 
@@ -60,19 +61,19 @@ public class Tweet implements Comparable<Tweet> {
 
     @Override
     public int compareTo(Tweet o) {
-        int ret = -Long.compare(time, o.getTime());
+        int ret = -tid.compareTo(o.getTid());
 
         if (ret == 0)
-            return -Long.compare(tid, o.getTid());
+            return -Long.compare(time, o.getTime());
 
         return ret;
     }
 
-    public long getTid() {
+    public BigInteger getTid() {
         return tid;
     }
 
-    public void setTid(long tid) {
+    public void setTid(BigInteger tid) {
         this.tid = tid;
     }
 

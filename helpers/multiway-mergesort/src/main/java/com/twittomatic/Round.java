@@ -1,3 +1,4 @@
+import java.math.BigInteger;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -76,7 +77,7 @@ public class Round {
         String txtLine;
 
         long lastTime = Long.MAX_VALUE;
-        long lastTweetId = Long.MAX_VALUE;
+        BigInteger lastTweetId = new BigInteger("18446744073709551615");
         long counter = 0;
 
         while (!queue.isEmpty()) {
@@ -84,7 +85,7 @@ public class Round {
             tweet = reader.getCurrentTweet();
 
             // This is needed to skip bogus files with duplicate entries
-            if (tweet.getTid() >= lastTweetId || tweet.getTime() > lastTime) {
+            if (tweet.getTid().compareTo(lastTweetId) >= 0) { //|| tweet.getTime() > lastTime) {
                 if (reader.advance(canDestroy))
                     queue.add(reader);
 

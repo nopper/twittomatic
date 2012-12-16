@@ -1,3 +1,4 @@
+import java.math.BigInteger;
 import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.File;
@@ -84,8 +85,8 @@ public class TweetReader implements Comparable<TweetReader> {
             this.currentTweet = new Tweet(
                     strLine,
                     parsed.getTime(),
-                    Long.parseLong((String)json.get("id_str")),
-                    Long.parseLong((String)((HashMap)json.get("user")).get("id_str")),
+                    new BigInteger((String)json.get("id_str")),
+                    new BigInteger((String)((HashMap)json.get("user")).get("id_str")),
                     geo == null ? "null" : geo.toJSONString(),
                     (String)json.get("text")
             );

@@ -32,3 +32,18 @@ Then logout and login for the system change take effect:
 Please note that we have specified 16 threads assigning 500 files each. For
 the sake of clarity 500 * 16 gives 8000 which should be less than the hard
 limit you have specified in the `limits.conf` file.
+
+Take in consideration that this will take a lot for the final phase since only
+one thread is in charge of reducing all the files. We measured a maximum of
+2MB/s write performance in output.
+
+You may consider rewriting the code to create total ordered and disjoint
+partitions in parallel in order to avoid the final bottleneck.
+
+Another option is to just leave the code as is and avoid the final round. The
+caveat here is to specify the right parameters so at the end we will get
+sorted N sorted runs, where N = number of processors. Additionally you will
+print out in a stats file the date-range information for every sorted run. At
+this point you can partition the data range and run N sub-range extractor.
+
+Or you can simply use hadoop and a TotalOrderPartitioner.
