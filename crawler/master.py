@@ -248,9 +248,12 @@ class JobTrackerFactory(ServerFactory):
 
         del self.clients[client]
 
-        nickname = self.client_to_nick[client]
-        del self.nick_to_client[nickname]
-        del self.client_to_nick[client]
+        try:
+            nickname = self.client_to_nick[client]
+            del self.nick_to_client[nickname]
+            del self.client_to_nick[client]
+        except:
+            pass
 
     def statusCompleted(self, status):
         return status == True
