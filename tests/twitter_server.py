@@ -59,13 +59,14 @@ def load_dataset_from(directory):
 
     for count, filename in enumerate(glob.glob(os.path.join(directory, '*/*'))):
         try:
-            user_id = int(os.path.basename(filename)[:-4])
+            name = os.path.basename(filename)
+            user_id = int(name[:name.index('.')])
         except:
             continue
 
-        if filename.endswith('.twt') or filename.endswith('twt.gz'): 
+        if filename.endswith('.twt') or filename.endswith('.twt.gz'):
             load_tweets(dataset_timeline, user_id, filename)
-        elif filename.endswith('.fws') or filename.endswith('twt.gz'):
+        elif filename.endswith('.fws') or filename.endswith('.fws.gz'):
             load_followers(dataset_followers, user_id, filename)
 
     print "Dataset successfully loaded. %d files loaded." % count
@@ -77,10 +78,16 @@ def get_timeline(user_id, max_id=-1, since_id=-1):
         if max_id == -1 and since_id == -1:
             response.append(tweet)
         else:
-            if max_id != -1 and int(tweet['id_str']) <= max_id:
-                response.append(tweet)
-            if since_id != -1 and int(tweet['id_str']) > since_id:
-                response.append(tweet)
+            if max_id != -1 and since_id != -1:
+                if int(tweet['id_str']) <= max_id and int(tweet['id_str']) > since_id:
+                    print since_id, tweet['id_str'], max_id
+                    response.append(tweet)
+            elif max_id != -1:
+                if int(tweet['id_str']) <= max_id:
+                    response.append(tweet)
+            elif since_id != -1:
+                if int(tweet['id_str']) > since_id:
+                    response.append(tweet)
         if len(response) >= 200:
             break
 
