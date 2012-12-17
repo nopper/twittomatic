@@ -19,6 +19,10 @@ if keyspace in sys.list_keyspaces():
 
 sys.create_keyspace(keyspace, SIMPLE_STRATEGY, {'replication_factor': '1'})
 sys.create_column_family(keyspace, 'Followers', comparator_type=LONG_TYPE)
-sys.create_column_family(keyspace, 'Timeline', comparator_type=LONG_TYPE)
+sys.create_column_family(keyspace, 'UserTimeline', comparator_type=LONG_TYPE)
+sys.create_column_family(keyspace, 'Timeline', comparator_type=UTF8_TYPE, compression_options={
+    'sstable_compression' : 'SnappyCompressor',
+    'chunk_length_kb' : '64'
+})
 
 print 'All done!'

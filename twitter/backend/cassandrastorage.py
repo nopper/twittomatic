@@ -12,33 +12,41 @@ print "Initializing connnection pool..."
 
 POOL = ConnectionPool(settings.CASSANDRA_KEYSPACE)
 FOLLOWERS = ColumnFamily(POOL, 'Followers')
+USERTIMELINE = ColumnFamily(POOL, 'UserTimeline')
 TIMELINE = ColumnFamily(POOL, 'Timeline')
+
 
 class TimelineFile(BaseTimelineFile):
     def __init__(self, user_id):
         BaseTimelineFile.__init__(self, user_id)
 
     def get_first(self):
-        dct = TIMELINE.get(str(self.user_id), column_count=1, column_reversed=True)
-        tweet = json.loads(dct[dct.keys()[0]])
+        dct = USERTIMELINE.get(str(self.user_id), column_count=1, column_reversed=True)
 
-        print "RETURING", tweet['id_str'], tweet['text']
-        return tweet
+        tweet_id = dct[dct.keys()[0]]
+        tweet = TIMELINE.get(str(tweet_id))
+
+        return json.loads(tweet['tweet'])
 
     def get_last(self):
-        dct = TIMELINE.get(str(self.user_id), column_count=1)
-        tweet = json.loads(dct[dct.keys()[0]])
+        dct = USERTIMELINE.get(str(self.user_id), column_count=1)
 
-        print "RETURING", tweet['id_str'], tweet['text']
-        return tweet
+        tweet_id = dct[dct.keys()[0]]
+        tweet = TIMELINE.get(str(tweet_id))
+
+        return json.loads(tweet['tweet'])
 
     def get_total(self):
-        return TIMELINE.get_count(str(self.user_id))
+        return USERTIMELINE.get_count(str(self.user_id))
 
     def add_tweet(self, tweet):
         assert isinstance(tweet, dict)
 
-        TIMELINE.insert(str(self.user_id), {int(tweet['id_str']): json.dumps(tweet, sort_keys=True)})
+        tweet_id = str(tweet['id_str'])
+        user_id = str(self.user_id)
+
+        USERTIMELINE.insert(user_id, {int(tweet_id): tweet_id})
+        TIMELINE.insert(tweet_id, {"tweet": json.dumps(tweet)})
 
     def commit(self):
         pass

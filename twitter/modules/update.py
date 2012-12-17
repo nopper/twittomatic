@@ -27,8 +27,9 @@ def update_timeline(user_id, must_include=lambda x: True):
 
     try:
         abort = (writer.get_total() == 0)
-        since_id = int(writer.get_first()['id_str'])
-    except:
+        first_tweet = writer.get_first()
+        since_id = int(first_tweet['id_str'])
+    except Exception, exc:
         abort = True
 
     if abort:
