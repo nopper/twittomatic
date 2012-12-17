@@ -7,7 +7,7 @@ from language import LanguageChecker
 from annotation import AnnotationExtractor
 
 class Annotator(object):
-    def __init__(self):
+    def __init__(self, input_file, output_file, rho_log, ht_log):
         self.lang = LanguageChecker('italian')
         self.hashtag = HashtagExtractor()
         self.annotator = AnnotationExtractor()
@@ -18,13 +18,23 @@ class Annotator(object):
         self.total = 0
         self.requests = 0
 
-    def run(self, inputfile, outfile):
-        with gzip.open(outputfile, 'w') as output:
-            with gzip.open(inputfile, 'r') as f:
+        self.coht = 0
+        self.rho_warn = 0
+
+        self.rho_log = gzip.open(rho_log, 'w')
+        self.ht_log = gzip.open(ht_log, 'w')
+
+        self.input_file = input_file
+        self.output_file = output_file
+
+    def run(self):
+        with gzip.open(self.output_file, 'w') as output:
+            with gzip.open(self.input_file, 'r') as f:
                 for line in f:
                     json = loads(line)
 
                     unstripped = json['text']
+                    tweet_id = json['id_str']
                     text = self.hashtag.sanitize(unstripped)
 
                     # Skip non italian tweets
@@ -41,18 +51,18 @@ class Annotator(object):
                     if not hts:
                         continue
 
-                    buff = self.annotate(unstripped, text, hts)
+                    buff = self.annotate(tweet_id, unstripped, text, hts)
 
                     if buff:
                         output.write(buff)
 
-                    sys.stderr.write("%d annotated of %d requested of %d italians of %d processed\r" % (self.annotated, self.requests, self.italian, self.total))
+                    sys.stderr.write("%d annotated of %d requested of %d italians of %d processed [%d warning, %d co-ht]\r" % (self.annotated, self.requests, self.italian, self.total, self.rho_warn, self.coht))
                     sys.stderr.flush()
 
-        sys.stderr.write("%d annotated of %d requested of %d italians of %d processed\n" % (self.annotated, self.requests, self.italian, self.total))
+        sys.stderr.write("%d annotated of %d requested of %d italians of %d processed [%d warning, %d co-ht]\n" % (self.annotated, self.requests, self.italian, self.total, self.rho_warn, self.coht))
         sys.stderr.flush()
 
-    def annotate(self, unstripped, text, hts):
+    def annotate(self, tweet_id, unstripped, text, hts):
         self.requests += 1
         annotations = self.annotator.annotate(text)
 
@@ -61,29 +71,46 @@ class Annotator(object):
 
         payload = {
             "hts": hts,
-            "annotations": annotations
+            "annotations": annotations,
+            "id": tweet_id,
+            "tweet": text
         }
+
+        self.annotated += 1
+        buff = json.dumps(payload) + '\n'
 
         for annotation in annotations:
             if annotation[1] == 0.5:
-                print "Unstripped: ", unstripped.encode('utf-8')
-                print "Stripped:", text.encode('utf-8')
-                print "Annotations:", annotations
+                self.rho_log.write(buff)
+                self.rho_warn += 1
                 break
 
-        self.annotated += 1
-        return json.dumps(payload) + '\n'
+        if len(hts) >= 2:
+            self.ht_log.write(json.dumps(hts) + '\n')
+            self.coht += 1
+
+        return buff
 
 
 if __name__ == "__main__":
-    inputfile = sys.argv[1]
-    outputfile = sys.argv[2]
+    from optparse import OptionParser
 
-    import pdb
-    import traceback
-    try:
-        Annotator().run(inputfile, outputfile)
-    except:
-        type, value, tb = sys.exc_info()
-        traceback.print_exc()
-        pdb.post_mortem()
+    parser = OptionParser()
+    parser.add_option("-i", "--input", dest="input",
+                      help="Input timeline file (json.gz)")
+    parser.add_option("-o", "--output", dest="output",
+                      help="Output file annotated file (json.gz)")
+    parser.add_option("-e", "--epsilon", dest="epsilon", type="float", default=0.4,
+                      help="Epsilon option for TagME (default: 0.4)")
+    parser.add_option("--log-05rho", dest="rho_log",
+                      help="Output file for 0.5 rho annotations (json.gz)")
+    parser.add_option("--log-coht", dest="ht_log",
+                      help="Output file for co-occurring hashtag (json.gz)")
+
+    (options, args) = parser.parse_args()
+
+    if options.input and options.output and options.rho_log and options.ht_log:
+        app = Annotator(options.input, options.output, options.rho_log, options.ht_log)
+        app.run()
+    else:
+        parser.print_help()

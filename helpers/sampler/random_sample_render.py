@@ -1,13 +1,17 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+import os
 import sys
 import cgi
 import gzip
 import re
 import requests
 from json import loads
-from portals import PortalExtractor
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tagme'))
+
+# from portals import PortalExtractor
 from annotation import AnnotationExtractor
 from hashtag import HashtagExtractor
 
@@ -21,9 +25,9 @@ HTML_PAGE = """<html>
    			var a = $(this);
    			a.hover(
    				function() {
-   					showAnchorTitle(a); 
-   				}, 
-   				function() { 
+   					showAnchorTitle(a);
+   				},
+   				function() {
    					hideAnchorTitle();
    				}
    			)
@@ -46,7 +50,7 @@ HTML_PAGE = """<html>
         var text =
            "<p>Wikipedia page: " + element.data('title') + "</p>" +
            "<p>Rho factor: " + element.data('rho') +       "</p>";
-        $(anchorTitle).css({ 
+        $(anchorTitle).css({
    			'top'  : (offset.top + element.outerHeight() + 4) + 'px',
    			'left' : offset.left + 'px'
    		})
@@ -151,9 +155,9 @@ class HTMLRenderer(object):
     def __init__(self):
         self.extractor = AnnotationExtractor()
         self.hastag = HashtagExtractor()
-        self.portal = PortalExtractor()
+        # self.portal = PortalExtractor()
 
-    def run(self, inputfile, outputfile):
+    def run(self, inputfile, outputfile, epsilon):
         with gzip.open(inputfile, 'r') as input:
             with open(outputfile, 'w') as output:
                 output.write(HTML_PAGE)
@@ -163,20 +167,20 @@ class HTMLRenderer(object):
                     #output.write("<p>%s</p>" % tweet['text'].encode('ascii', 'xmlcharrefreplace'))
 
                     text = self.hastag.sanitize(tweet['text'])
-                    annotations = self.extractor.annotate(text, is_tweet=False, raw=True)
+                    annotations = self.extractor.annotate(text, is_tweet=False, raw=True, epsilon=epsilon)
 
                     output.write("<div class='tweet'>")
 
-                    # Try a simple categorization
-                    output.write("<div class='categories'>")
-                    categories = self.portal.categories(map(lambda x: int(x['id']), annotations))
+                    # # Try a simple categorization
+                    # output.write("<div class='categories'>")
+                    # categories = self.portal.categories(map(lambda x: int(x['id']), annotations))
 
-                    if categories:
-                        output.write((', '.join(categories)).encode('ascii', 'xmlcharrefreplace'))
-                    else:
-                        output.write('No categories found')
+                    # if categories:
+                    #     output.write((', '.join(categories)).encode('ascii', 'xmlcharrefreplace'))
+                    # else:
+                    #     output.write('No categories found')
 
-                    output.write("</div>\n")
+                    # output.write("</div>\n")
 
                     output.write("<div class='text'>")
                     output.write(self.render_single(text, annotations))
@@ -188,29 +192,84 @@ class HTMLRenderer(object):
 
     def render_single(self, text, annotations):
         html = ""
-        prev = 0
+        current = 0
+        level = 0
+        prev_pos = 0
+        must_stop = False
+        pending = []
+        annotations.sort(key=lambda x: x['start'])
 
-        #text = text.encode('utf8')
-        #print repr(text)
 
-        for annotation in annotations:
-            start, stop = annotation['start'], annotation['end']
-            #print start, stop
-            #rho, id = annotation['rho'].encode('utf8'), annotation['id']
-            #spot, title = annotation['spot'].encode('utf8'), annotation['title'].encode('utf8')
+        while current < len(annotations):
+            annotation = annotations[current]
             rho, id = annotation['rho'], annotation['id']
+            start, stop = annotation['start'], annotation['end']
             spot, title = annotation['spot'], annotation['title']
 
-            html += text[prev:start]
-            html += "<a href='#' data-spot='%s' data-title='%s' data-rho='%s'>%s</a>" % \
-                    (spot, title, rho, text[start:stop])
-            prev = stop
+            if pending:
+                while pending:
+                    last = pending[0]
 
-        html += text[prev:]
+                    if start >= last['end']:
+                        html += text[:last['end']]
+                        html += '</a>'
+                        prev_pos = last['end']
+                        pending.pop(0)
+                    else:
+                        break
+
+            # We need to checkout if the next annotation is nested inside this one or not
+            html += text[prev_pos:start]
+
+            if current + 1 < len(annotations) and annotations[current + 1]['start'] < stop:
+                next_nested = True
+                pending.append(annotation)
+                pending.sort(key=lambda x: x['end'])
+                next_pos = annotations[current + 1]['start']
+            else:
+                next_nested = False
+                next_pos = stop
+
+            html += "<a href='#' data-spot='%s' data-title='%s' data-rho='%s'>%s" % \
+                (spot, title, rho, text[start:next_pos])
+
+            if not next_nested:
+                html += '</a>'
+
+            prev_pos = next_pos
+            current += 1
+
+        while pending:
+            last = pending[0]
+
+            if start < last['end']:
+                html += text[:last['end']]
+                html += '</a>'
+                prev_pos = last['end']
+                pending.pop(0)
+            else:
+                break
+
+        html += text[prev_pos:]
 
         #return html.decode('utf8', 'ignore').encode('ascii', 'xmlcharrefreplace')
         return html.encode('ascii', 'xmlcharrefreplace')
 
 
 if __name__ == "__main__":
-    renderer = HTMLRenderer().run(sys.argv[1], sys.argv[2])
+    from optparse import OptionParser
+
+    parser = OptionParser()
+    parser.add_option("-i", "--input", dest="input",
+                      help="Input timeline file (json.gz)")
+    parser.add_option("-o", "--output", dest="output",
+                      help="Output file (html)")
+    parser.add_option("-e", "--epsilon", dest="epsilon", type="float", default=0.4,
+                      help="Epsilon option for TagME (default: 0.4)")
+
+    (options, args) = parser.parse_args()
+
+    if options.input and options.output:
+        renderer = HTMLRenderer().run(options.input, options.output, options.epsilon)
+    else:
+        parser.print_help()

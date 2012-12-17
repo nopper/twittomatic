@@ -6,12 +6,12 @@ class AnnotationExtractor(object):
     def __init__(self):
         self.requests = 0
 
-    def annotate(self, text, is_tweet=False, raw=False):
+    def annotate(self, text, is_tweet=False, raw=False, epsilon=0.4, threshold=0.15):
         payload = {
             'key': '45fgh00',
             'text': text,
             'lang': 'it',
-            'epsilon': '0.45',
+            'epsilon': str(epsilon),
         }
 
         if is_tweet:
