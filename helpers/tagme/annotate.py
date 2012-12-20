@@ -56,8 +56,9 @@ class Annotator(object):
                     if buff:
                         output.write(buff)
 
-                    sys.stderr.write("%d annotated of %d requested of %d italians of %d processed [%d warning, %d co-ht]\r" % (self.annotated, self.requests, self.italian, self.total, self.rho_warn, self.coht))
-                    sys.stderr.flush()
+                    if self.annotated % 1000 == 0:
+                        sys.stderr.write("%d annotated of %d requested of %d italians of %d processed [%d warning, %d co-ht]\r" % (self.annotated, self.requests, self.italian, self.total, self.rho_warn, self.coht))
+                        sys.stderr.flush()
 
         sys.stderr.write("%d annotated of %d requested of %d italians of %d processed [%d warning, %d co-ht]\n" % (self.annotated, self.requests, self.italian, self.total, self.rho_warn, self.coht))
         sys.stderr.flush()
