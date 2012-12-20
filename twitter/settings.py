@@ -84,6 +84,7 @@ HDFS_DIRECTORY = '/twitter/'
 
 STORAGE_CLASS = 'file' # You can choose betweet file and cassandra
 CASSANDRA_KEYSPACE = 'crawler'
+CASSANDRA_POOL = ['localhost:9160']
 
 USE_COMPRESSION = True
 

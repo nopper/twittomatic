@@ -10,18 +10,17 @@ from twitter.backend.base import FollowerFile as BaseFollowerFile
 
 print "Initializing connnection pool..."
 
-POOL = ConnectionPool(settings.CASSANDRA_KEYSPACE)
+POOL = ConnectionPool(settings.CASSANDRA_KEYSPACE, settings.CASSANDRA_POOL)
 FOLLOWERS = ColumnFamily(POOL, 'Followers')
 USERTIMELINE = ColumnFamily(POOL, 'UserTimeline')
 TIMELINE = ColumnFamily(POOL, 'Timeline')
-
 
 class TimelineFile(BaseTimelineFile):
     def __init__(self, user_id):
         BaseTimelineFile.__init__(self, user_id)
 
     def get_first(self):
-        dct = USERTIMELINE.get(str(self.user_id), column_count=1, column_reversed=True)
+        dct = USERTIMELINE.get(self.user_id, column_count=1, column_reversed=True)
 
         tweet_id = dct[dct.keys()[0]]
         tweet = TIMELINE.get(str(tweet_id))
@@ -29,7 +28,7 @@ class TimelineFile(BaseTimelineFile):
         return json.loads(tweet['tweet'])
 
     def get_last(self):
-        dct = USERTIMELINE.get(str(self.user_id), column_count=1)
+        dct = USERTIMELINE.get(self.user_id, column_count=1)
 
         tweet_id = dct[dct.keys()[0]]
         tweet = TIMELINE.get(str(tweet_id))
@@ -37,15 +36,14 @@ class TimelineFile(BaseTimelineFile):
         return json.loads(tweet['tweet'])
 
     def get_total(self):
-        return USERTIMELINE.get_count(str(self.user_id))
+        return USERTIMELINE.get_count(self.user_id)
 
     def add_tweet(self, tweet):
         assert isinstance(tweet, dict)
 
         tweet_id = str(tweet['id_str'])
-        user_id = str(self.user_id)
 
-        USERTIMELINE.insert(user_id, {int(tweet_id): tweet_id})
+        USERTIMELINE.insert(self.user_id, {int(tweet_id): 0})
         TIMELINE.insert(tweet_id, {"tweet": json.dumps(tweet)})
 
     def commit(self):
@@ -57,18 +55,18 @@ class FollowerFile(BaseFollowerFile):
     def __init__(self, user_id, start_line=1):
         BaseFollowerFile.__init__(self, user_id)
         try:
-            dct = FOLLOWERS.get(str(self.user_id), column_count=1, column_reversed=True)
+            dct = FOLLOWERS.get(self.user_id, column_count=1, column_reversed=True)
             self.length = int(dct.keys()[0]) + 1
         except NotFoundException:
             self.length = 0
 
     def add_follower(self, user_id):
-        FOLLOWERS.insert(str(self.user_id), {int(self.length): str(user_id)})
+        FOLLOWERS.insert(self.user_id, {int(self.length): user_id})
         self.length += 1
 
     def __len__(self):
         try:
-            dct = FOLLOWERS.get(str(self.user_id), column_count=1, column_reversed=True)
+            dct = FOLLOWERS.get(self.user_id, column_count=1, column_reversed=True)
             self.length = int(dct.keys()[0]) + 1
         except NotFoundException:
             self.length = 0
@@ -79,7 +77,7 @@ class FollowerFile(BaseFollowerFile):
         if value < 0 or value >= self.length:
             raise IndexError
 
-        dct = FOLLOWERS.get(str(self.user_id), [value])
+        dct = FOLLOWERS.get(self.user_id, [value])
         return dct[value]
 
     def commit(self):
