@@ -6,7 +6,7 @@ from twisted.python import log
 
 LOOKUP_URL = settings.TWITTER_URL + "users/lookup.json"
 
-def analyze_followers(reader, start_cursor=0, already_processed=lambda x: False, progress_cb=lambda *args: None, max_requests=-1):
+def analyze_followers(reader, start_cursor="0", already_processed=lambda x: False, progress_cb=lambda *args: None, max_requests=-1):
     """
     Analyze a list of followers contained in a given file.
     @param reader is an instance of FollowerReader
@@ -18,15 +18,22 @@ def analyze_followers(reader, start_cursor=0, already_processed=lambda x: False,
     count = 0
     batch = []
     lookup_infos = []
+    next_cursor = start_cursor
     current_cursor = start_cursor
     dedup = set()
+
+    iterable = reader.followers(start_cursor)
+    number_followers = len(reader)
 
     while True:
         consumed = False
 
-        while len(batch) < BATCH_LIMIT and start_cursor < len(reader):
-            follower_id = reader[start_cursor]
-            start_cursor += 1
+        while len(batch) < BATCH_LIMIT:
+            try:
+                follower_id, next_cursor = iterable.next()
+            except StopIteration:
+                consumed = True
+                break
 
             if follower_id not in dedup and not already_processed(follower_id):
                 batch.append(follower_id)
@@ -52,10 +59,11 @@ def analyze_followers(reader, start_cursor=0, already_processed=lambda x: False,
 
         if msg == MSG_OK:
             lookup_infos.extend(collection)
-            current_cursor = start_cursor
+            current_cursor = next_cursor
 
             if len(batch) > 0:
-                progress_cb(lookup_infos, current_cursor, len(reader))
+                # The +1 is actually included in the current_cursor = next_cursor assignment
+                progress_cb(lookup_infos, reader.get_processed(current_cursor), number_followers)
 
             batch = []
             # Jump below

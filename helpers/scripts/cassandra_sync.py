@@ -18,6 +18,11 @@ if keyspace in sys.list_keyspaces():
     sys.drop_keyspace(keyspace)
 
 sys.create_keyspace(keyspace, SIMPLE_STRATEGY, {'replication_factor': '1'})
+sys.create_column_family(keyspace, 'Counters',
+    comparator_type=UTF8_TYPE,
+    default_validation_class='CounterColumnType',
+    key_validation_class=UTF8_TYPE,
+)
 sys.create_column_family(keyspace, 'Followers',
     comparator_type=LONG_TYPE,
     default_validation_class=LONG_TYPE,

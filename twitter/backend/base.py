@@ -18,8 +18,11 @@ class FollowerFile(object):
     def __init__(self, user_id):
         self.user_id = user_id
 
-    def add_follower(self, user_id):
+    def add_followers(self, user_ids):
         pass
 
-    def __getitem__(self, value):
-        pass
+    def get_processed(self, cursor):
+        return 0
+
+    def followers(self, cursor="0"):
+        raise StopIteration

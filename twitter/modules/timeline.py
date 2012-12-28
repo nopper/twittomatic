@@ -84,10 +84,10 @@ def crawl_timeline(user_id, must_include=lambda x: True):
     total_fetched = len(timeline)
     total_tweets += total_included
 
-    for tweet in timeline:
-        if must_include(tweet):
-            writer.add_tweet(tweet)
-            total_included += 1
+    timeline = filter(must_include, timeline)
+    total_included = len(timeline)
+
+    writer.add_tweets(timeline)
 
     # Signal completion
     must_include(None)

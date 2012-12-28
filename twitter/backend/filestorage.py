@@ -46,6 +46,10 @@ class TimelineFile(BaseTimelineFile):
     def get_total(self):
         return self.total
 
+    def add_tweets(self, tweets):
+        for tweet in tweets:
+            self.add_tweet(tweet)
+
     def add_tweet(self, tweet):
         assert isinstance(tweet, dict)
         # This tweet is an update to the timeline
@@ -81,20 +85,26 @@ class FollowerFile(BaseFollowerFile):
         self.local_copy.seek(0, 2)
         self.length = self.local_copy.tell() / self.item_size
 
-    def add_follower(self, user_id):
+    def get_processed(self, cursor):
+        return int(cursor)
+
+    def followers(self, cursor="0"):
+        cursor = int(cursor)
+
+        for cursor in xrange(cursor, self.length):
+            position = cursor * self.item_size
+            self.local_copy.seek(position, 0)
+            yield struct.unpack("!Q", self.local_copy.read(self.item_size))[0], cursor + 1
+
+        raise StopIteration
+
+    def add_followers(self, followers):
         self.local_copy.seek(0, 2)
-        self.local_copy.write(struct.pack("!Q", int(user_id)))
+        for user_id in followers:
+            self.local_copy.write(struct.pack("!Q", int(user_id)))
 
     def __len__(self):
         return self.length
-
-    def __getitem__(self, value):
-        if value < 0 or value >= self.length:
-            raise IndexError
-
-        position = value * self.item_size
-        self.local_copy.seek(position, 0)
-        return str(struct.unpack("!Q", self.local_copy.read(self.item_size))[0])
 
     def commit(self):
         self.local_copy.seek(0, 0)

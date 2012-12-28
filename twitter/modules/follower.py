@@ -63,8 +63,7 @@ def crawl_followers(user_id, cursor=-1, must_include=lambda x: True):
     writer = FollowerFile(user_id)
     msg, followers, sleep_time, new_cursor = fetch_followers(user_id=user_id, cursor=cursor)
 
-    for follower in followers:
-        writer.add_follower(follower)
+    writer.add_followers(followers)
 
     response = TwitterResponse(TwitterResponse.msg_to_status(msg),
         user_id,

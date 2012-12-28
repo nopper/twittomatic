@@ -33,9 +33,18 @@ class TwitterJob(namedtuple('TwitterJob', 'operation, user_id, cursor')):
     def deserialize(self, str):
         if str is None:
             return None
+
         operation, user_id, cursor = str.split(',', 2)
-        return TwitterJob(operation, int(user_id), int(cursor))
+        user_id = int(user_id)
+
+        # The analyzer must be treated differently since
+        # the cassandra storage provides a complex type for
+        # dealing with progress information
+        if operation != TwitterJob.ANALYZER_OP:
+            cursor = int(cursor)
+
+        return TwitterJob(operation, user_id, cursor)
 
     @classmethod
     def serialize(self, job):
-        return '%s,%d,%d' % (job.operation, job.user_id, job.cursor)
+        return '%s,%s,%s' % (job.operation, job.user_id, job.cursor)
