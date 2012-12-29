@@ -75,8 +75,8 @@ class GraphMLRenderer(object):
             ])
 
 
-            hashtags = self.add_nodes(xml, self.ht_nodes)
-            pages = self.add_nodes(xml, self.wiki_nodes)
+            hashtags = self.add_nodes(xml, self.ht_nodes, 'name')
+            pages = self.add_nodes(xml, self.wiki_nodes, 'title')
 
             edges = self.add_edges(xml)
 
@@ -87,7 +87,11 @@ class GraphMLRenderer(object):
     def add_edges(self, xml, lastid=200000000):
         with gzip.open(self.inputfile, 'r') as inputfile:
             for count, line in enumerate(inputfile):
-                ht_id, wiki_id, rhos, ht_name, wiki_name = line.strip().split('\t', 4)
+                try:
+                    ht_id, wiki_id, rhos, ht_name, wiki_name = line.strip().split('\t', 4)
+                except:
+                    ht_id, wiki_id, rhos, ht_name = line.strip().split('\t', 3)
+                    wiki_name = ''
 
                 xml.start_element('edge', {
                     "id": str(lastid),
@@ -104,13 +108,13 @@ class GraphMLRenderer(object):
 
             return count + 1
 
-    def add_nodes(self, xml, filename):
+    def add_nodes(self, xml, filename, attribute):
         with open(filename, 'r') as inputfile:
             for count, line in enumerate(inputfile):
                 node_id, node_name = line.strip().split('\t', 1)
 
                 xml.start_element('node', {'id': node_id})
-                xml.start_element('data', {'key': 'name'}, True)
+                xml.start_element('data', {'key': attribute}, True)
                 xml.output.characters(node_name)
                 xml.end_element('data', True)
                 xml.end_element('node')

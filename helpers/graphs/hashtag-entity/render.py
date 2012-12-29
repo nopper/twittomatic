@@ -33,7 +33,12 @@ class Renderer(object):
             pages = []
 
             for line in inputfile:
-                hashtag, wid, rho, title = line.strip().split('\t', 3)
+                try:
+                    hashtag, wid, rho, title = line.strip().split('\t', 3)
+                except:
+                    hashtag, wid, rho = line.strip().split('\t', 2)
+                    title = ''
+
                 hashtag = "#" + hashtag
 
                 if prevhashtag == hashtag:

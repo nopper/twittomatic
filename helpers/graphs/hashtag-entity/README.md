@@ -3,11 +3,11 @@ How to get the graph
 
 After the annotation with TagME or lightTAG, use the `extract.py` in conjunction with a `sort -k1` pipe to create a sorted list of edges:
 
-    $ python extract.py annotations-0.4.json.gz | sort -k1 | gzip -c > he-edges.tsv.gz
+    $ python extract.py -i annotations-0.4.json.gz | sort -k1 | gzip -c > he-edges.tsv.gz
 
 After that you can obtain a complete graph with the `render.py` script:
 
-    $ python render.py --skipsingle -i he-edges.tsv.gz -o he-graph.tsv.gz
+    $ python render.py --skip-single -i he-edges.tsv.gz -o he-graph.tsv.gz
 
 The format of the file is
 
@@ -28,7 +28,7 @@ First we need to get the list of all nodes partecipating in the graph:
 
 After that extraction you can simply run the `graphml-render.py` script:
 
-    $ python graphml-render.py \
+    $ python render-graphml.py \
         --ht-nodes hashtag-ids.txt \
         --wiki-nodes wikipedia-ids.txt \
         -i he-graph.tsv.gz -o he-graph.xml.gz
