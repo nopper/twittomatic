@@ -376,8 +376,20 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
                     newjob = TwitterJob(TwitterJob.TIMELINE_OP, int(target_user), 0)
 
                     #log.msg("Following %d friend => %d %s" % (result.user_id, int(target_user), str(newjob)))
+
+                    # NOTE: This is the point you may want to customize. As it is now new jobs
+                    #       are simply inserted in the FRONTIER_NAME. If you are willing to implement
+                    #       a continuous BFS just insert the job at the of STREAM (rpush).
+                    #       For DFS traversal insert the job in front of STREAM (lpush).
+                    #       If you need to implement a priority queue use ZSETs
                     if not self.redis.sismember(self.USERS_SELECTED, target_user):
-                        self.redis.rpush(self.FRONTIER_NAME, TwitterJob.serialize(newjob))
+                        if settings.TRAVERSING.upper() == 'BFS':
+                            self.redis.rpush(self.STREAM, TwitterJob.serialize(newjob))
+                        elif settings.TRAVERSING.upper() == 'DFS':
+                            self.redis.lpush(self.STREAM, TwitterJob.serialize(newjob))
+                        else:
+                            self.redis.rpush(self.FRONTIER_NAME, TwitterJob.serialize(newjob))
+
                         self.redis.sadd(self.USERS_SELECTED, target_user)
                         counter += 1
 
@@ -410,7 +422,9 @@ class TwitterJobTrackerFactory(JobTrackerFactory):
 
     def onFinished(self):
         # If we have finished and an analyzer was specified extract the frontier
-        if self.transformation & (TRANSFORM_ANALYZER):
+        if self.transformation & (TRANSFORM_ANALYZER) and \
+           settings.TRAVERSING.upper() not in ("BFS", "DFS"):
+
             with NamedTemporaryFile(prefix='frontier-', suffix='.gz', delete=False) as container:
                 with gzip.GzipFile(mode='wb', fileobj=container) as gzdst:
                     for i in xrange(self.redis.llen(self.FRONTIER_NAME)):

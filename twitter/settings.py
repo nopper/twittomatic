@@ -63,6 +63,19 @@ if not os.path.exists(TEMPORARY_DIRECTORY):
     print "Directory %s does not exist. Exiting." % TEMPORARY_DIRECTORY
     sys.exit(-1)
 
+# By default we only execute a single-iteration of BFS and save the results to
+# a file
+TRAVERSING = 'default'
+
+# Continuous BFS traversal.
+# TRAVERSING = 'BFS'
+
+# Continuous DFS traversal.
+# TRAVERSING = 'DFS'
+
+# If you are going to use a DFS or BFS traversal be sure to execute node
+# pruning or to have enough memory to keep the state.
+
 # Settings used by redis
 FRONTIER_NAME = 'italian_followers'
 

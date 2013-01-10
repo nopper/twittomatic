@@ -13,6 +13,8 @@ WORKER_IDLE = 0
 WORKER_WORKING = 1
 
 class JobTrackerProtocol(LineReceiver):
+    MAX_LENGTH = 1 << 20
+
     def connectionMade(self):
         self.client_id = self.factory.mkhash(self.transport.getPeer())
         self.status = WORKER_IDLE
