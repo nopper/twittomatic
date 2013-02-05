@@ -1,3 +1,4 @@
+import os
 from mwnet import MWNet
 from morphit import MorphIt
 from sentiwordnet import SentiWordNetCorpusReader
@@ -30,9 +31,9 @@ def iter_words(text):
 
 class Analyzer(object):
     def __init__(self):
-        self.mwnet = MWNet()
-        self.morpher = MorphIt()
-        self.swn = SentiWordNetCorpusReader("SentiWordNet_3.0.0.txt")
+        self.mwnet = MWNet(os.path.join("data", "mwnet.db"))
+        self.morpher = MorphIt(os.path.join("data", "morph-it.txt"))
+        self.swn = SentiWordNetCorpusReader(os.path.join("data", "SentiWordNet_3.0.0.txt"))
 
         # TODO: complete this list. Also take in consideration that morphit provides
         # tagging for proper names, smilies and so on which can be discarded quite
