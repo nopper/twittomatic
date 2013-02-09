@@ -210,11 +210,12 @@ class HashtagEntityGraph(object):
                 xml.end_element('data', True)
                 xml.end_element('edge')
 
-                rhostr = ':'.join(map(str, prev.rhos))
-                buff = "%d\t%d\t%s\t%s\t%s\n" % (htid, prev.annotation + START_ID, rhostr, prev.ht, prev.title)
-                stats.write(buff.encode('utf-8'))
+                if len(prev.rhos) > 1:
+                    rhostr = ':'.join(map(str, prev.rhos))
+                    buff = "%d\t%d\t%s\t%s\t%s\n" % (htid, prev.annotation + START_ID, rhostr, prev.ht, prev.title)
+                    stats.write(buff.encode('utf-8'))
 
-                lastid += 1
+                    lastid += 1
                 prev = entry
 
             if entry.ht != prevht:

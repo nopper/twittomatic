@@ -111,7 +111,11 @@ class GraphMLRenderer(object):
     def add_nodes(self, xml, filename, attribute):
         with open(filename, 'r') as inputfile:
             for count, line in enumerate(inputfile):
-                node_id, node_name = line.strip().split('\t', 1)
+                try:
+                    node_id, node_name = line.strip().split('\t', 1)
+                except:
+                    node_id = line.strip()
+                    node_name = ''
 
                 xml.start_element('node', {'id': node_id})
                 xml.start_element('data', {'key': attribute}, True)
