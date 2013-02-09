@@ -8,6 +8,7 @@ import sys
 import gzip
 import json
 import mwclient
+import mwclient.page
 
 class TitlesExtractor(object):
     """
@@ -119,12 +120,82 @@ class TemplateExtractor(object):
                             if attempt == limit:
                                 pass
 
+class LinkExtractor(object):
+    def __init__(self, hostname, path='/w/'):
+        self.site = mwclient.Site(hostname, path)
+
+    def parse_block(self, blockname, restart=0):
+        with open(blockname, 'r') as input:
+            with gzip.open(blockname + '-outlinks.json.gz', 'a') as output:
+                for count, line in enumerate(input):
+                    if restart > count:
+                        continue
+
+                    info = json.loads(line.strip())
+                    page = mwclient.page.Page(self.site, info['name'], info)
+
+                    limit = 3
+                    attempt = 0
+
+                    while attempt <= limit:
+                        try:
+                            attempt += 1
+                            print "Requesting %s requests made [%d to restart]" % (info['name'].encode('utf8'), count)
+                            info['links'] = map(lambda page: {
+                                'id': page._info['pageid'],
+                                'ns': page._info['ns'],
+                                'revid': page._info['lastrevid'],
+                                'length': page._info['length'],
+                                'touched': page._info['touched'],
+                                'title': page.page_title,
+                                'name': page.name
+                            }, [t for t in filter(lambda x: 'pageid' in x._info, page.links())])
+
+                            output.write(json.dumps(info, sort_keys=True) + '\n')
+                            break
+                        except Exception, exc:
+                            print "Got an error %s. Retry %d of %d" % (str(exc), attempt, limit)
+
+                            if attempt == limit:
+                                pass
+
+class CategoryExtractor(object):
+    def __init__(self, hostname, path='/w/'):
+        self.site = mwclient.Site(hostname, path)
+
+    def parse_block(self, blockname, restart=0):
+        with open(blockname, 'r') as input:
+            with gzip.open(blockname + '-categories.json.gz', 'a') as output:
+                for count, line in enumerate(input):
+                    if restart > count:
+                        continue
+
+                    info = json.loads(line.strip())
+                    page = mwclient.page.Page(self.site, info['name'], info)
+
+                    limit = 3
+                    attempt = 0
+
+                    while attempt <= limit:
+                        try:
+                            attempt += 1
+                            print "Requesting %s requests made [%d to restart]" % (info['name'].encode('utf8'), count)
+                            info['categories'] = [cat._info for cat in page.categories()]
+
+                            output.write(json.dumps(info, sort_keys=True) + '\n')
+                            break
+                        except Exception, exc:
+                            print "Got an error %s. Retry %d of %d" % (str(exc), attempt, limit)
+
+                            if attempt == limit:
+                                pass
+
 if __name__ == "__main__":
     from optparse import OptionParser
 
     parser = OptionParser()
     parser.add_option("-t", "--tool", dest="tool",
-                      help="Tool to use [title, html, templates]")
+                      help="Tool to use [title, html, templates, categories, links]")
     parser.add_option("-r", "--restart", dest="restart", type="int", default=0,
                       help="Restart from line (default: 0)")
 
@@ -138,6 +209,12 @@ if __name__ == "__main__":
         app.parse_block(args[0], options.restart)
     elif options.tool == 'templates':
         app = TemplateExtractor('it.wikipedia.org')
+        app.parse_block(args[0], options.restart)
+    elif options.tool == 'links':
+        app = LinkExtractor('it.wikipedia.org')
+        app.parse_block(args[0], options.restart)
+    elif options.tool == 'categories':
+        app = CategoryExtractor('it.wikipedia.org')
         app.parse_block(args[0], options.restart)
     else:
         parser.print_help()
