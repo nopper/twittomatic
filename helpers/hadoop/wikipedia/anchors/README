@@ -1,0 +1,25 @@
+This script exploits the downloaded files form wikipedia to extract anchors
+from it. This resource is not available on DBPedia. The output file is a JSON
+file in the following format (one JSON object per line, it is not pretty
+printed as shown):
+
+    {
+        "anchor": "200m farfalla",
+        "pages": [
+            ["Nuoto ai Giochi della XXIX Olimpiade - 200 metri farfalla femminili", 1],
+            ["Campionati europei di nuoto 2012 - 200 metri farfalla femminili", 1],
+            ["200m farfalla", 1],
+            ["Nuoto ai Giochi della XXIX Olimpiade - 200 metri farfalla maschili", 2]
+        ]
+    }
+    {
+        "anchor": "fermi",
+        "pages": [
+            ["fermi", 1],
+            ["Fermo di polizia", 2],
+            ["Fermi (unit\u00e0 di misura)", 8]
+        ]
+    }
+
+Indicating that the spot "200m farfalla" was used for a total of `1+1+1+2 = 5`
+times in different contexts, while the spot "fermi" 11 times.
