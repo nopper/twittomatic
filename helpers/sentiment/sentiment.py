@@ -59,11 +59,12 @@ class Analyzer(object):
         for word, indices in iter_words(sentence):
             ret = self.morpher.find(word)
 
-            if not ret:
-                continue
-
-            word, lemma, features = ret
-            wn_type = self.get_type(features)
+            if ret:
+                word, lemma, features = ret
+                wn_type = self.get_type(features)
+            else:
+                word, lemma, features = word, word, 'n'
+                wn_type = 'n'
 
             # Here we can also impose the type to be an ADJ, NAME, or VERB
             synsets = self.mwnet.get_english_synsets(lemma, wn_type)
@@ -93,17 +94,22 @@ class Analyzer(object):
             negative  = map(lambda x: x[1], scores)
             objective = map(lambda x: x[2], scores)
 
-            result[word] = {
-                'indices': indices,
-                'lemma': lemma,
-                'features': features,
-                'synsets': synsets_dict,
-                'scores': {
-                    'positive': sum(positive) * 1.0 / len(positive),
-                    'negative': sum(negative) * 1.0 / len(positive),
-                    'objective': sum(objective) * 1.0 / len(positive),
-                },
-            }
+            if len(positive) > 0:
+                pscore = sum(positive) * 1.0 / len(positive)
+                nscore = sum(negative) * 1.0 / len(positive)
+                oscore = sum(objective) * 1.0 / len(positive)
+
+                result[word] = {
+                    'indices': indices,
+                    'lemma': lemma,
+                    'features': features,
+                    'synsets': synsets_dict,
+                    'scores': {
+                        'positive': pscore,
+                        'negative': nscore,
+                        'objective': oscore,
+                    },
+                }
 
         print scores
         return result
