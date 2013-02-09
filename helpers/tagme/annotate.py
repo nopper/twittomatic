@@ -27,7 +27,7 @@ class Annotator(object):
         self.input_file = input_file
         self.output_file = output_file
 
-    def run(self):
+    def run(self, skip_lang=False):
         with gzip.open(self.output_file, 'w') as output:
             with gzip.open(self.input_file, 'r') as f:
                 for line in f:
@@ -40,7 +40,7 @@ class Annotator(object):
                     # Skip non italian tweets
                     self.total += 1
 
-                    if not self.lang.is_valid(text):
+                    if not skip_lang and not self.lang.is_valid(text):
                         continue
 
                     self.italian += 1
@@ -101,6 +101,8 @@ if __name__ == "__main__":
                       help="Input timeline file (json.gz)")
     parser.add_option("-o", "--output", dest="output",
                       help="Output file annotated file (json.gz)")
+    parser.add_option("-s", "--skip-lang", dest="skip_lang", action="store_true",
+                      help="Skip language check")
     parser.add_option("-e", "--epsilon", dest="epsilon", type="float", default=0.4,
                       help="Epsilon option for TagME (default: 0.4)")
     parser.add_option("--log-05rho", dest="rho_log",
@@ -112,6 +114,6 @@ if __name__ == "__main__":
 
     if options.input and options.output and options.rho_log and options.ht_log:
         app = Annotator(options.input, options.output, options.rho_log, options.ht_log)
-        app.run()
+        app.run(options.skip_lang)
     else:
         parser.print_help()
