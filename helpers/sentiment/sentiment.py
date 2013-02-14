@@ -1,71 +1,24 @@
 import os
+
+from splitter import *
 from mwnet import MWNet
-from morphit import MorphIt
 from sentiwordnet import SentiWordNetCorpusReader
-
-def strip_word(text, start, stop):
-    while start < stop:
-        if text[start] in "'\":;,.":
-            start += 1
-        break
-
-    while stop > start:
-        if text[stop] in "'\":,.":
-            stop -= 1
-        break
-
-    if stop == len(text) - 1:
-        stop += 1
-
-    return text[start:stop], (start, stop)
-
-
-def iter_words(text):
-    prevpos = 0
-    for pos, ch in enumerate(text):
-        if ch in ' \n\r\t':
-            yield strip_word(text, prevpos, pos)
-            prevpos = pos + 1
-
-    yield strip_word(text, prevpos, pos)
 
 class Analyzer(object):
     def __init__(self):
         self.mwnet = MWNet(os.path.join("data", "mwnet.db"))
-        self.morpher = MorphIt(os.path.join("data", "morph-it.txt"))
         self.swn = SentiWordNetCorpusReader(os.path.join("data", "SentiWordNet_3.0.0.txt"))
 
-        # TODO: complete this list. Also take in consideration that morphit provides
-        # tagging for proper names, smilies and so on which can be discarded quite
-        # easily
-
-        self.morph_to_wn = {
-            "VER" : 'v',
-            "DET-INDEF": 'a',
-            "NOUN-M": 'n',
-            "NOUN-F": 'n',
-        }
-
-    def get_type(self, features):
-        try:
-            return self.morph_to_wn[features.split(':')[0]]
-        except:
-            return None
+        if os.getenv('TANL_EMAIL'):
+            self.splitter = TanlSplitter()
+        else:
+            self.splitter = SimpleSplitter()
 
     def analyze_sentence(self, sentence):
         scores = []
         result = {}
 
-        for word, indices in iter_words(sentence):
-            ret = self.morpher.find(word)
-
-            if ret:
-                word, lemma, features = ret
-                wn_type = self.get_type(features)
-            else:
-                word, lemma, features = word, word, 'n'
-                wn_type = 'n'
-
+        for word, lemma, tag, wn_type, indices in self.splitter.iter_words(sentence):
             # Here we can also impose the type to be an ADJ, NAME, or VERB
             synsets = self.mwnet.get_english_synsets(lemma, wn_type)
 
@@ -88,8 +41,6 @@ class Analyzer(object):
                 if found:
                     break
 
-            print scores
-
             positive  = map(lambda x: x[0], scores)
             negative  = map(lambda x: x[1], scores)
             objective = map(lambda x: x[2], scores)
@@ -102,7 +53,7 @@ class Analyzer(object):
                 result[word] = {
                     'indices': indices,
                     'lemma': lemma,
-                    'features': features,
+                    'features': tag,
                     'synsets': synsets_dict,
                     'scores': {
                         'positive': pscore,
@@ -111,10 +62,14 @@ class Analyzer(object):
                     },
                 }
 
-        print scores
         return result
 
 if __name__ == "__main__":
     import sys
     app = Analyzer()
     print app.analyze_sentence(sys.argv[1])
+
+    #text = "Il presidente Giorgio Napolitano incontra a Roma il commissario dell'Unione Europea Manuel Barroso."
+
+    #for i in iter_words(text):
+    #    print i
