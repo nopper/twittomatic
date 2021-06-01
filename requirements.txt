@@ -8,7 +8,7 @@ hiredis==0.1.1
 pyes==0.19.1
 redis==2.7.2
 requests==0.14.2
-urllib3==1.5
+urllib3==1.26.5
 whisper==0.9.10
 wsgiref==0.1.2
 zope.interface==4.0.2
