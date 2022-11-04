@@ -1,6 +1,6 @@
 Flask==0.9
 Jinja2==2.6
-Twisted==12.2.0
+Twisted==22.10.0
 Werkzeug==0.8.3
 gevent==0.13.8
 greenlet==0.4.0
